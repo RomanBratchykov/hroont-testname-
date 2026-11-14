@@ -1,6 +1,6 @@
 export interface Message {
     id: string;
-    role: 'user';
+    role: 'user' | 'assistant';
     content: string;
     createdAt: number;
 }
@@ -16,6 +16,12 @@ export interface ChatState {
     drafts: Record<string, string>;
 }
 export type ChatAction = {
+    type: 'replace'; state: ChatState;
+} | {
+    type: 'hydrate'; conversation: Conversation;
+} | {
+    type: 'answer'; conversationId: string; messageId: string; text: string; now: number;
+} | {
     type: 'new';
 } | {
     type: 'select';
@@ -42,6 +48,14 @@ export const STORAGE_KEY = 'hroont.chat.v1';
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     const key = state.activeId ?? 'new';
     switch (action.type) {
+        case 'replace': return action.state;
+        case 'hydrate': return { ...state, conversations: state.conversations.map(c => {
+            if (c.id !== action.conversation.id) return c;
+            const messages = new Map([...c.messages, ...action.conversation.messages].map(message => [message.id, message]));
+            return { ...action.conversation, updatedAt: Math.max(c.updatedAt, action.conversation.updatedAt),
+                messages: [...messages.values()].sort((a, b) => a.createdAt - b.createdAt) };
+        }) };
+        case 'answer': return { ...state, conversations: state.conversations.map(c => c.id === action.conversationId ? { ...c, updatedAt: action.now, messages: [...c.messages.filter(message => message.id !== action.messageId), { id: action.messageId, role: 'assistant', content: action.text, createdAt: action.now }] } : c) };
         case 'new': return { ...state, activeId: null };
         case 'select': return state.conversations.some(c => c.id === action.id) ? { ...state, activeId: action.id } : state;
         case 'draft': return { ...state, drafts: { ...state.drafts, [key]: action.text } };
@@ -73,7 +87,7 @@ export function parseSavedState(raw: string | null): ChatState {
             return initialState;
         if (!Object.values(data.drafts).every(d => typeof d === 'string'))
             return initialState;
-        if (!data.conversations.every(c => typeof c.id === 'string' && typeof c.title === 'string' && typeof c.updatedAt === 'number' && Array.isArray(c.messages) && c.messages.every(m => typeof m.id === 'string' && m.role === 'user' && typeof m.content === 'string' && typeof m.createdAt === 'number')))
+        if (!data.conversations.every(c => typeof c.id === 'string' && typeof c.title === 'string' && typeof c.updatedAt === 'number' && Array.isArray(c.messages) && c.messages.every(m => typeof m.id === 'string' && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && typeof m.createdAt === 'number')))
             return initialState;
         return { ...data, activeId: data.conversations.some(c => c.id === data.activeId) ? data.activeId : null };
     }

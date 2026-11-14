@@ -1,4 +1,31 @@
-# AgroResilience — interview handoff
+# AgroResilience — session handoff
+
+## Latest implementation state
+
+User explicitly authorized the server/orchestrator foundation, with datasets and scientific
+scripts supplied later, plus selectable DeepSeek/Ollama, two endpoints, unified launcher and
+easy run instructions. Implemented in `backend/`, `scripts/run.py`, `run.sh` and the existing
+frontend; see root `README.md` and `docs/orchestrator-plan.md`.
+
+- `GET /api/health` and `POST /api/chat`; shared orchestration, explicit provider selection,
+  no automatic fallback. Bounded model/tool loops, four active turns, one active turn per chat.
+- SQLite for the standalone localhost test; one clearly labeled demo administrator workspace.
+  Preview login is not authentication; PostgreSQL/domain accounts remain future work.
+- Durable history, cancellation without automatic replay, last-chat-activity 30-day retention,
+  consistent chat deletion, conservative persisted DeepSeek testing/demo spending reservations.
+- Local bounded text/JSON/XLSX extraction, local language screening, optional configured
+  LibreTranslate-compatible translation, top mascot status and hide-notice setting.
+- History and capability tools implemented using LangChain structured tools. Scientific
+  tools/datasets, embeddings/RAG, validated structured profile extraction and visual analytics
+  are explicitly deferred; do not invent their results.
+- Short ambiguous Latin text is treated as English; language detection is heuristic.
+  Translation needs an explicitly configured service; sub-second latency is not benchmarked.
+- Offline backend tests (17), including real localhost fake-model launcher/disconnect tests,
+  pass. No paid/live model generation, scientific API calls, hosting or commits performed.
+- Existing user changes in AGENTS/AGENTS.md were preserved. Code and documentation are
+  uncommitted. The older interview snapshot below is historical and superseded by this state.
+
+## Original interview snapshot
 
 Saved 2026-11-14 at the user's request to continue later. Resume the interview; do not assume pending recommendations are approved. No backend, translation, RAG or provider implementation has been performed during this session. No paid API calls, deployment, GPU rental or training were performed.
 
@@ -39,6 +66,45 @@ Saved 2026-11-14 at the user's request to continue later. Resume the interview; 
 - Q34–Q53 below have been asked but not answered. The user's next message was to save everything and return later. Do not ask the entire batch again automatically; identify it as the saved pending round and continue from their answers.
 
 ## Pending round — Q34–Q53
+
+### Resume answers received
+
+Q55 display clarified by user: translation status belongs at the top of the interface beside the mascot. Provide a setting to turn off that translation status notice. Translation itself remains enabled; this is a processing-status UI requirement, not model internal reasoning display. This supersedes the tentative display interpretation below; no Q55 clarification remains pending.
+
+Latest numbered follow-up answers:
+
+- Q37 clarification approved: closing/refreshing the browser cancels unfinished processing immediately, without automatic resumption. Do not claim an already dispatched provider request can be unbilled or forcibly stopped; implementation needs best-effort cancellation and stale-result protection.
+- Q41–Q44 recommendations approved: retain original Cyrillic linked to English locally; translate messages/documents/spreadsheet cells/API text while preserving numeric/scientific structure; clarify uncertain translations affecting calculations; detect languages, translate supported languages and clearly explain unsupported cases.
+- Q54: automatic 30-day retention runs from last activity in each chat, with associated information deleted consistently. Explicit deletion remains available.
+- Q55: under-one-second translation target applies to short chat messages; larger files may take longer. User adds: "transfer it to the thinking process, make settings ability to turn it off". Working interpretation: show translation/preparation progress in the thinking/processing UI, with a setting to hide that display, while keeping required translation enabled. This display interpretation is not explicit approval to expose model internal reasoning or to bypass English translation; clarify if user intended a different toggle.
+
+Q34–Q55 now have answers, except exact Q55 toggle semantics if the working interpretation is disputed. Continue the remaining design interview from Q56; do not repeat the original pending batch. Actual translation engine, input sizes/latency measurement, accepted file limits, schemas, dataset/tool access, and scientific applicability remain unresolved.
+
+Further answers mapped to Q45–Q53:
+
+- Q45: "filtering" means organizing all required fields with their parameters. This supersedes the earlier interpretation as evidence cleaning/publication approval; exact required fields and parameter schemas must follow the AgroResilience domain documents.
+- Q46: prioritize user-provided data when sources conflict. If personal assertions conflict with technical evidence, notify the user that their data may be wrong and ask whether to base the answer on their supplied data or NASA API evidence. Preserve source attribution and scientific qualifications; choosing user inputs does not validate them scientifically.
+- Q47: approved public references may be shared across personalized workspaces.
+- Q48: for MVP, administrators may see all chats. This supersedes the proposed administrator chat-isolation restriction; it does not establish wider public access.
+- Q49: administrator approves shared RAG publication.
+- Q50: track code; keep data hidden/excluded from Git. Do not assume permission to commit public dataset fixtures.
+- Q51: read uploaded/pasted files locally before DeepSeek; extract raw text or convert to Markdown to reduce API costs. Specific accepted formats, size limits, and handling of unreadable/oversized files remain unconfirmed. Preserve scientific structure, units and provenance when parsing.
+- Q52: user can delete chat history and clear all information; deletions must be consistent across associated state. Automatically delete after 30 days; starting point (creation versus inactivity) and precise scope need clarification.
+- Q53: approve six model calls and ten tool executions per turn, configurable, with supported partial findings and explanation when exhausted.
+
+Scope reminder from user: MVP needs working scripts, good data visualizers, good reasoning and scientific accuracy based on AGENTS/AgroResilience documents; avoid unnecessary commercial/product infrastructure.
+
+Q37 clarification and Q41–Q44 remain unanswered. Q45–Q53 answers above supersede the original recommendations below. Translation input-size target and 30-day retention clock also remain to clarify.
+
+Q34–Q36 and Q39 recommendations are approved: release processing slots after answers, one active turn per user with arrival-order fairness, show queue status/cancel, and stop immediately for invalid credentials/access denial.
+
+Q37: user rejects the proposed uncertain-call recovery flow: "keep those out, if user restarts when answer is not finished, or close it just turn over immediately". Clarify whether closing/reloading the browser cancels the unfinished turn immediately and whether queued work also cancels; do not assume automatic resumption or paid-call replay.
+
+Q38: wait 30 seconds for temporary API unavailability, then tell the user to manually restart or try later (supersedes two-minute recommendation).
+
+Q40: prefer CPU-local translation if it can finish in under one second; otherwise investigate free external translation services to meet that target. No engine selected, service contacted, or latency guarantee established. Define the input size covered by this target before implementation.
+
+Q41–Q53 remain unanswered. The numbered list below preserves the original questions/recommendations; the answers above supersede its Q34–Q40 proposals.
 
 34. Slot release: release after an answer or retain until another event? Recommendation: release processing capacity after answering, retaining conversation/history.
 35. Queue fairness: can one user submit several jobs while others wait? Recommendation: one active turn per user, arrival order among waiting users.

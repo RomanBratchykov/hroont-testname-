@@ -16,6 +16,8 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     const saved = readPreference('hroont.theme');
     return saved === 'light' || saved === 'dark' ? saved : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
+  const [showTranslationStatus, updateTranslationStatus] = useState(() => readPreference('hroont.translation-status') !== 'off');
+  const setShowTranslationStatus = (show: boolean) => { updateTranslationStatus(show); savePreference('hroont.translation-status', show ? 'on' : 'off'); };
   const [model, updateModel] = useState(() => {
     const saved = readPreference('hroont.model');
     return config.models.some(model => model.id === saved) ? saved! : config.models[0].id;
@@ -34,5 +36,5 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     if (!config.models.some(model => model.id === next)) return;
     updateModel(next); savePreference('hroont.model', next);
   };
-  return <AppearanceContext.Provider value={{ theme, setTheme, model, setModel }}>{children}</AppearanceContext.Provider>;
+  return <AppearanceContext.Provider value={{ theme, setTheme, model, setModel, showTranslationStatus, setShowTranslationStatus }}>{children}</AppearanceContext.Provider>;
 }

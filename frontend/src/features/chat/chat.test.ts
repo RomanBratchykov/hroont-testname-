@@ -48,3 +48,33 @@ test('follow-up messages stay in the selected chat and preserve its renamed titl
     assert.deepEqual(state.conversations[0].messages.map(m => m.content), ['First topic', 'A follow up']);
     assert.equal(state.conversations[1].messages.length, 1);
 });
+
+test('server history and replies stay in the originating chat', () => {
+    let state = chatReducer(initialState, { type: 'send', text: 'First', id: 'one', messageId: 'm1', now: 1 });
+    state = chatReducer(state, { type: 'new' });
+    state = chatReducer(state, { type: 'send', text: 'Second', id: 'two', messageId: 'm2', now: 2 });
+    state = chatReducer(state, { type: 'answer', conversationId: 'one', messageId: 'a1', text: 'Reply', now: 3 });
+    assert.equal(state.activeId, 'two');
+    assert.equal(state.conversations.find(c => c.id === 'one')?.messages[1].role, 'assistant');
+    assert.equal(state.conversations.find(c => c.id === 'two')?.messages.length, 1);
+    assert.deepEqual(parseSavedState(JSON.stringify(state)), state);
+});
+
+test('a delayed history snapshot cannot overwrite messages received after it started', () => {
+    let state = chatReducer(initialState, { type: 'send', text: 'First', id: 'one', messageId: 'm1', now: 1 });
+    const oldSnapshot = state.conversations[0];
+    state = chatReducer(state, { type: 'send', text: 'New', id: 'ignored', messageId: 'm2', now: 2 });
+    state = chatReducer(state, { type: 'answer', conversationId: 'one', messageId: 'a1', text: 'Reply', now: 3 });
+    state = chatReducer(state, { type: 'hydrate', conversation: oldSnapshot });
+    assert.deepEqual(state.conversations[0].messages.map(message => message.content), ['First', 'New', 'Reply']);
+});
+
+test('an answer already received in history is not duplicated by its stream event', () => {
+    let state = chatReducer(initialState, { type: 'send', text: 'Hello', id: 'one', messageId: 'm1', now: 1 });
+    const answer = { type: 'answer', conversationId: 'one', messageId: 'm1:answer', text: 'Reply', now: 2 } as const;
+    state = chatReducer(state, { type: 'hydrate', conversation: { ...state.conversations[0], messages: [...state.conversations[0].messages,
+        { id: 'm1:answer', role: 'assistant', content: 'Reply', createdAt: 2 }] } });
+    state = chatReducer(state, answer);
+    assert.equal(state.conversations[0].messages.length, 2);
+    assert.equal(new Set(state.conversations[0].messages.map(message => message.id)).size, 2);
+});

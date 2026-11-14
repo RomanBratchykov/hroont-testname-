@@ -3,6 +3,8 @@ import type { Theme } from './themes';
 export interface Appearance {
   theme: Theme;
   setTheme: (theme: Theme) => void;
+  showTranslationStatus: boolean;
+  setShowTranslationStatus: (show: boolean) => void;
   model: string;
   setModel: (model: string) => void;
 }
