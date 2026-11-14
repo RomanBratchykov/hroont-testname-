@@ -1,5 +1,7 @@
 # AgroResilience — train Qwen3.5-4B on Vast.ai RTX 4090
 
+> Archived optional local-model runbook as of 2026-11-14. DeepSeek API is the primary direction; this training workflow is not a production prerequisite. Revisit only if a local provider is selected later. See [MODEL_PROVIDER.md](MODEL_PROVIDER.md).
+
 Updated: 2026-11-14. This is a pre-production training runbook, not an executed or GPU-tested job. No instance has been rented and no money has been spent by the agent.
 
 ## 1. Deployment decision

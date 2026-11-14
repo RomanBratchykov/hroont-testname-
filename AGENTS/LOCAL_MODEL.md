@@ -1,10 +1,12 @@
-# Local model — design interview
+# Model design — historical local-model interview
+
+> Superseded deployment direction (2026-11-14): use DeepSeek API first, with a replaceable provider boundary and a possible future local-model adapter. See [MODEL_PROVIDER.md](MODEL_PROVIDER.md) for the current direction. Local Qwen inference, mandatory GPU training and GPU-specific scheduling below are historical decisions, not current deployment requirements. Other confirmed product behavior remains applicable unless explicitly revised.
 
 Status: serving design interview with a separate pre-production training runbook. Production-time training is excluded. Some integration facts and implementation details remain open. This file records the discussion, not instructions to connect a backend.
 
 ## Source
 
-`AgroResilience_Farmer_Questionnaire.md` is the user-designated source for collected farmer context. `AgroResilience_Technical_Scientific_Specification_v1.1.docx.md`, especially sections 3, 11, 13–18, and 20, supplies scientific requirements. `SERVER.md` is currently empty.
+`AgroResilience_Farmer_Questionnaire.md` is the user-designated source for collected farmer context. `AgroResilience_Technical_Scientific_Specification_v1.1.docx.md`, especially sections 3, 11, 13–18, and 20, supplies scientific requirements. `SERVER.md` consolidates server requirements and pending decisions.
 
 ## Requirements stated by the AgroResilience document
 
