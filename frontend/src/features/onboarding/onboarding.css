@@ -1,0 +1,28 @@
+.greeting-screen, .auth-screen {
+  min-height: 100svh;
+  background: var(--bg);
+  color: var(--text);
+}
+.greeting-screen { display: grid; place-items: center; position: relative; padding: 80px 20px; }
+.entry-logo { position: absolute; top: 25px; left: 30px; }
+.logo-placeholder { display: inline-block; font: 400 13px/1.5 var(--font-body); letter-spacing: 0; color: var(--muted); }
+.greeting-center { display: flex; flex-direction: column; align-items: center; gap: 24px; }
+.greeting-animation { width: min(320px, 80vw); height: auto; border-radius: 24px; display: block; }
+.entry-header { display: flex; justify-content: space-between; align-items: center; padding: 25px 30px; }
+.auth-screen { display: flex; flex-direction: column; }
+.auth-card { width: min(100% - 40px, 400px); margin: auto; padding: 55px 0 80px; }
+.auth-card h1 { font: 400 clamp(30px, 5vw, 38px)/1.2 var(--font-heading); letter-spacing: -.8px; margin: 0 0 13px; }
+.auth-description { color: var(--muted); margin: 0 0 28px; }
+.auth-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 4px; border-radius: 9px; background: var(--sidebar); margin-bottom: 25px; }
+.auth-tabs button { padding: 9px; border-radius: 6px; color: var(--muted); }
+.auth-tabs .selected { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px #0001; }
+.auth-card form { display: flex; flex-direction: column; }
+.auth-card label { font-size: 12px; margin-bottom: 7px; }
+.auth-card input { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; color: var(--text); width: 100%; padding: 12px; margin-bottom: 20px; }
+.primary-button { padding: 12px 18px; border-radius: 8px; background: var(--accent); color: var(--bg); font-weight: 550; }
+.primary-button:hover { filter: brightness(.95); }
+.quiet-button { padding: 7px 9px; font-size: 12px; color: var(--muted); border-radius: 6px; }
+.quiet-button:hover { color: var(--text); background: var(--hover); }
+.auth-preview-note { font-size: 11px; color: var(--muted); line-height: 1.7; text-align: center; margin: 19px 0; }
+.preview-entry { display: block; margin: 0 auto; }
+.field-hint { color: var(--muted); font-size: 11px; margin: -13px 0 20px; }

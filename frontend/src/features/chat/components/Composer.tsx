@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Icon } from '../../../components/Icon';
+import { ModelSelector } from './ModelSelector';
 export function Composer({ value, onChange, onSend }: {
     value: string;
     onChange: (value: string) => void;
@@ -21,6 +22,6 @@ export function Composer({ value, onChange, onSend }: {
                     onSend(value);
             }
         }}/>
-    <div className="composer-toolbar"><span className="composer-mode"><Icon name="leaf" size={15}/> A little room to think</span><button className="send-button" type="submit" disabled={!value.trim()} aria-label="Send message"><Icon name="arrow" size={20}/></button></div>
+    <div className="composer-toolbar"><ModelSelector /><button className="send-button" type="submit" disabled={!value.trim()} aria-label="Send message"><Icon name="arrow" size={20}/></button></div>
   </form>;
 }

@@ -1,0 +1,17 @@
+{
+  "fonts": {
+    "body": "Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    "heading": "Georgia, 'Times New Roman', serif",
+    "mono": "ui-monospace, SFMono-Regular, Consolas, monospace"
+  },
+  "greeting": {
+    "animation": "/media/greeting.gif",
+    "still": "/media/greeting.png",
+    "durationMs": 2400
+  },
+  "models": [
+    { "id": "balanced", "label": "Balanced" },
+    { "id": "fast", "label": "Fast" },
+    { "id": "reasoning", "label": "Reasoning" }
+  ]
+}
