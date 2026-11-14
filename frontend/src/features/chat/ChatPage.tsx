@@ -37,11 +37,10 @@ export function ChatPage({ mascot, openSettings, onLeave }: {
         }
         catch {
             setCopied(null);
-        } }}><Icon name={copied === message.id ? 'check' : 'copy'} size={15}/></button></article>)}<div className="offline-notice"><Icon name="leaf" size={20}/><div><strong>Your thoughts have a place here.</strong><p>This preview saves messages on this device. Replies will be available when an AI provider is connected.</p></div></div><div ref={end}/></div>
-        <div className="conversation-composer"><Composer value={draft} onChange={text => dispatch({ type: 'draft', text })} onSend={send}/><p className="composer-caption">Your conversations stay in this browser.</p></div>
+        } }}><Icon name={copied === message.id ? 'check' : 'copy'} size={15}/></button></article>)}<div className="offline-notice"><Icon name="leaf" size={20}/><div><strong>Test preview</strong><p>This preview saves messages on this device. Replies will be available when an AI provider is connected.</p></div></div><div ref={end}/></div>
       </> : <div className="welcome-area"><div className="welcome-content"><MascotSlot render={mascot} status={draft ? 'composing' : 'idle'}/><h1>How can I help?</h1><Composer value={draft} onChange={text => dispatch({ type: 'draft', text })} onSend={send}/></div></div>}
       {storageError && <div className="storage-warning" role="alert">Browser storage is unavailable or full. Your current chats are only saved for this session.</div>}
-      <footer className="app-footer"><span>Frontend preview · No AI connected</span></footer>
+      <footer className="app-footer"><span>Soily can make mistakes, check important information.</span></footer>
     </main>
   </div>;
 }

@@ -1,4 +1,5 @@
-.greeting-screen, .auth-screen {
+.g
+, .auth-screen {
   min-height: 100svh;
   background: var(--bg);
   color: var(--text);
