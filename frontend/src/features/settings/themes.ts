@@ -1,13 +1,37 @@
 export type Theme = 'light' | 'dark';
-export const themes: Record<Theme, Record<string, string>> = {
-  light: {
-    bg: '#f8f7f3', sidebar: '#eeede7', surface: '#fffefa', text: '#35352f',
-    muted: '#74746b', border: '#deddd4', hover: '#e6e5dd', accent: '#a6553a',
-    'accent-soft': '#f2e6de',
-  },
+
+/** Product palette from AGENTS/APP.md. Keep these source colors unchanged. */
+export const palettes = {
   dark: {
-    bg: '#262723', sidebar: '#20211e', surface: '#30312c', text: '#e9e7dd',
-    muted: '#b1b1a5', border: '#45463e', hover: '#36372f', accent: '#e39b7e',
-    'accent-soft': '#45342b',
+    background: '#141922', surface: '#1a2130', button: '#101828',
+    buttonSpecial: '#1b199c', buttonSpecialHover: '#151473', buttonSpecialText: '#ffffff',
+    selected: '#324461', outline: '#2a3347', avatar: '#3b82f6', hover: '#1f2a3c',
+    primaryText: '#d4dbe8', secondaryText: '#7e8fa8', highlight: '#1f2a3c',
+    border: '#1f2a3c', transparent: '#00000000',
   },
+  light: {
+    background: '#ffffff', surface: '#f9fafb', button: '#e2e8f0',
+    buttonSpecial: '#155dfc', buttonSpecialHover: '#0c43f7', buttonSpecialText: '#ffffff',
+    selected: '#dbdbdb', outline: '#e5e7eb', avatar: '#2b7fff', hover: '#1f2937',
+    primaryText: '#101828', secondaryText: '#6a7282', highlight: '#f3f4f6',
+    border: '#e5e7eb', transparent: '#00000000',
+  },
+} satisfies Record<Theme, Record<string, string>>;
+
+function tokens(theme: Theme): Record<string, string> {
+  const palette = palettes[theme];
+  return {
+    ...palette,
+    bg: palette.background,
+    sidebar: palette.surface,
+    text: palette.primaryText,
+    muted: palette.secondaryText,
+    accent: palette.buttonSpecial,
+    'accent-soft': palette.highlight,
+    'hover-text': theme === 'light' ? palette.buttonSpecialText : palette.primaryText,
+  };
+}
+export const themes: Record<Theme, Record<string, string>> = {
+  light: tokens('light'),
+  dark: tokens('dark'),
 };

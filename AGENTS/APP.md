@@ -45,3 +45,4 @@ for dark theme
 
 for light color scheme 
 
+the personal page should be placeholder for user info which get called from server 

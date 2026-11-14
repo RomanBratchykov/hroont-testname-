@@ -163,8 +163,8 @@
   display:flex;
   align-items:center;
   justify-content:center;
-  background:#dcdccf;
-  color:#5d6151;
+  background:var(--avatar);
+  color:var(--buttonSpecialText);
   border-radius:50%;
   width:33px;
   height:33px;
@@ -283,7 +283,7 @@
   height:32px;
   border-radius:9px;
   background:var(--accent);
-  color:#fff;
+  color:var(--buttonSpecialText);
   display:flex;
   align-items:center;
   justify-content:center
@@ -293,7 +293,7 @@
 }
 .send-button:disabled {
   background:var(--accent-soft);
-  color:#c59d8b
+  color:var(--muted)
 }
 
 .app-footer {
@@ -526,3 +526,15 @@
 @media (min-width: 1900px) { .welcome-content, .conversation-heading, .messages, .conversation-composer { max-width: 900px; } }
 @media (max-width: 760px) { .welcome-content h1 { font-size: 36px; } .auth-card { padding-top: 30px; } }
 @media (max-width: 380px) { .app-footer > span:first-child { display: inline; } .entry-header { padding: 20px; } }
+
+/* Map interactive states to the product palette, including contrasting hover text. */
+.icon-button:hover, .new-chat:hover, .quiet-button:hover, .sidebar-settings:hover,
+.history-row:hover, .history-row:hover .history-item, .history-row:hover .icon-button,
+.history-row:hover .history-item svg { background: var(--hover); color: var(--hover-text); }
+.history-row.active { background: var(--selected); color: var(--text); }
+.history-row.active:hover { background: var(--hover); color: var(--hover-text); }
+.new-chat { background: var(--button); }
+.new-chat:hover .new-plus, .new-chat:hover .key-hint { color: var(--hover-text); }
+.send-button { background: var(--buttonSpecial); color: var(--buttonSpecialText); }
+.send-button:hover:not(:disabled) { background: var(--buttonSpecialHover); filter: none; }
+.send-button:disabled { background: var(--button); color: var(--muted); }

@@ -12,7 +12,9 @@ React + TypeScript, built with Vite. This app runs entirely in the browser: no A
 - `src/config/appearance.json`: developer-configured font stacks, greeting asset paths and duration, and preview model choices. JSON changes take effect after Vite reload/rebuild. No remote fonts are requested; use an installed font or add a local `@font-face` asset.
 - `src/features/settings/themes.ts`: complete light/dark color token sets.
 - `src/features/settings/AppearanceProvider.tsx`: applies global appearance and persists theme/model preferences. Components access it through `appearanceContext.ts`.
-- `src/features/settings/SettingsDialog.tsx`: native modal with theme controls, keyboard dismissal, and native focus handling.
+- `src/features/settings/SettingsPage.tsx`: dedicated settings page with persistent appearance controls.
+- `src/features/personal-state/PersonalStatePage.tsx`: empty interview-data page and a read-only `PersonalStateData` presentation contract for a future server adapter. No data fetching is connected and no personal information is invented.
+- `src/features/navigation/useWorkspacePage.ts`: browser hash navigation for `#/chat`, `#/settings`, and `#/personal-state`, with browser back/forward support. The workspace stays mounted across these views, preserving chat state and drafts.
 - `src/features/onboarding/`: greeting GIF and frontend login/register screens. The greeting advances after the configured delay or Continue; reduced-motion users see the PNG. The app starts at the greeting on reload.
 - `src/index.css`: full-width reset and global defaults; `src/App.css`: responsive chat layout; feature CSS files own onboarding and settings.
 
@@ -22,6 +24,8 @@ React + TypeScript, built with Vite. This app runs entirely in the browser: no A
 
 ```tsx
 <ChatPage
+  page={page}
+  navigate={navigate}
   openSettings={openSettings}
   onLeave={showAuth}
   mascot={({ status }) => <MyMascot animation={status} />}
@@ -54,3 +58,9 @@ The greeting leads to login/register. These forms validate input locally and onl
 The composer model selector offers configurable preview modes. Selection persists, but it does not select a real provider or generate responses. Theme controls live in Settings, available from both the account screen and chat. There are no suggestion cards.
 
 The bundled greeting is a simple temporary text GIF. Replace `public/media/greeting.gif` and its static PNG fallback, or change their paths in the JSON, when final greeting artwork is provided.
+
+## Workspace pages and palette
+
+“Personal state” sits directly above “New chat” in the sidebar. Settings is a full workspace page, not a dialog; it is also available as a standalone page before entering the preview. Each page moves keyboard focus to its heading when opened. Chat and theme state stay in their existing owners.
+
+`themes.ts` preserves every named light/dark palette color from `AGENTS/APP.md`. Semantic aliases (`bg`, `sidebar`, `text`, `muted`, `accent`, `accent-soft`, and `hover-text`) keep existing components decoupled from the source palette naming. Light-theme dark hover surfaces use white text for contrast. Special buttons use the specified normal/hover/text tokens, and avatars use the specified avatar token.
