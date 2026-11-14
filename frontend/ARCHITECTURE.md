@@ -18,21 +18,21 @@ React + TypeScript, built with Vite. This app runs entirely in the browser: no A
 - `src/features/onboarding/`: greeting GIF and frontend login/register screens. The greeting advances after the configured delay or Continue; reduced-motion users see the PNG. The app starts at the greeting on reload.
 - `src/index.css`: full-width reset and global defaults; `src/App.css`: responsive chat layout; feature CSS files own onboarding and settings.
 
-## Future mascot
+## Mascot
 
-`ChatPage` accepts an optional `mascot` render function. It receives `idle` or `composing` in the welcome area; the context type also reserves `conversation` for future placements. Without a supplied renderer the slot renders nothing. Branding uses the literal “place logo here” placeholder. Example:
+`src/components/Mascot.tsx` uses the supplied `../assets/Hi_soil.gif` (repository-root
+`assets/Hi_soil.gif`). Vite bundles that original asset for development and production.
+`src/assets/mascot-still.png` is its first frame, used for reduced motion and older messages.
 
-```tsx
-<ChatPage
-  page={page}
-  navigate={navigate}
-  openSettings={openSettings}
-  onLeave={showAuth}
-  mascot={({ status }) => <MyMascot animation={status} />}
-/>
-```
+The startup greeting plays the supplied animation. Every new chat displays it centered
+above the composer; submitting the first message animates the mascot shrinking into the
+message's right margin. Every message has a small mascot, with only the newest message
+animated. Small screens use a narrower mascot gutter.
 
-The slot owns positioning; the mascot owns animation/assets. Supply accessible text or controls in the mascot renderer if it communicates meaningful information. Decorative artwork should be hidden from assistive technology.
+`MascotSlot` still accepts a custom renderer; otherwise it renders the shared mascot.
+The animation uses measured bounds and the browser's animation API, with an immediate
+placement fallback when reduced motion is enabled or animation is unsupported. Existing
+translation-status settings remain independent of the artwork.
 
 ## Future growth
 
@@ -57,7 +57,7 @@ The greeting leads to login/register. These forms validate input locally and onl
 
 The composer model selector offers configurable preview modes. Selection persists, but it does not select a real provider or generate responses. Theme controls live in Settings, available from both the account screen and chat. There are no suggestion cards.
 
-The bundled greeting is a simple temporary text GIF. Replace `public/media/greeting.gif` and its static PNG fallback, or change their paths in the JSON, when final greeting artwork is provided.
+The supplied greeting/mascot asset is `assets/Hi_soil.gif`; its still frame is `src/assets/mascot-still.png`. Startup duration is configured in `src/config/appearance.json`.
 
 ## Workspace pages and palette
 

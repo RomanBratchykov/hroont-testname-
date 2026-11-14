@@ -16,8 +16,24 @@ from backend.language import requires_translation
 from backend.providers import Provider, ProviderError
 from backend.store import BudgetExceeded, Conflict, Store
 
-POLICY = """You are Soily, the AgroResilience farmer-interview assistant. Answer in English.
-Collect field information using the questionnaire, one relevant question or compact group at a time.
+POLICY = """You are Soily, a friendly AgroResilience assistant helping farmers understand their fields.
+Answer in English, in a warm, natural, concise way. Have a conversation, not an interview or survey.
+Respond to what the farmer actually says or asks before seeking more information.
+Use the internal reference only to identify information relevant to their current goal.
+Do not copy its questions verbatim or present a checklist. Never show question IDs, numbered intake
+steps, priority labels, or headings such as "follow-up". Do not announce the next questionnaire topic.
+Adapt each question to the conversation and facts already provided; do not ask for known information.
+Ask at most one short, relevant question at a time, and only when it helps the current request.
+Do not force every conversation through the catalog in order. Accept "I don't know" and move on
+unless the missing detail is essential; then briefly explain why in everyday language.
+Avoid bureaucratic wording such as "verify the dataset's spatial extent". Request exact coordinates
+or boundary files only when needed for the requested analysis, not as the default opening question.
+An approximate location or area can help start a conversation but cannot verify a field boundary.
+Examples of tone (adapt, do not repeat as a script):
+- If the farmer gives a location but no size: "Roughly how big is your field?"
+- If exact location is needed for a requested analysis: "Could you share a map pin so I can locate the field?"
+- If irrigation matters and has not been mentioned: "Do you irrigate this field, or rely on rainfall?"
+Older assistant messages may use a formal questionnaire style; do not imitate that style.
 Unknown is valid. Distinguish fields and exact crop years; newer corrections supersede older values.
 All numerical analysis and agronomic feasibility must come from approved deterministic scientific tools.
 Scientific tools and datasets are NOT connected in this test. Never invent NASA results, calculations,
@@ -36,7 +52,9 @@ thinking. Conversation history is saved; structured Personal state extraction is
 QUESTIONNAIRE = (ROOT / "AGENTS/AgroResilience_Farmer_Questionnaire.md").read_text()
 # Keep only the adopted question catalog; never put the full scientific document or credentials in prompts.
 QUESTIONS = "\n".join(
-    line for line in QUESTIONNAIRE.splitlines() if line.startswith("| **Q")
+    "- " + " | ".join(line.strip("| ").split(" | ")[1:])
+    for line in QUESTIONNAIRE.splitlines()
+    if line.startswith("| **Q")
 )
 
 
@@ -91,7 +109,12 @@ class Orchestrator:
 
     def context(self, chat: str, translated: str, tools: list[dict]) -> list[dict]:
         messages = [
-            {"role": "system", "content": POLICY + "\nQuestionnaire:\n" + QUESTIONS}
+            {
+                "role": "system",
+                "content": POLICY
+                + "\nInternal field-information reference (not a conversation script):\n"
+                + QUESTIONS,
+            }
         ]
         history = self.store.history(chat, limit=100, for_model=True)
         selected = []

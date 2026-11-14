@@ -27,6 +27,7 @@ export function useChat() {
     const [storageError, setStorageError] = useState(false);
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
+    const [revealingMessageId, setRevealingMessageId] = useState<string | null>(null);
     const [ready, setReady] = useState(!connected);
     const [status, setStatus] = useState<ChatEvent | null>(null);
     const [evidence, setEvidence] = useState<unknown[]>([]);
@@ -65,6 +66,7 @@ export function useChat() {
     }, []);
 
     const dispatch = (action: ChatAction) => {
+        if (['new', 'select', 'delete'].includes(action.type)) setRevealingMessageId(null);
         if (!connected || !['select', 'delete', 'rename', 'new'].includes(action.type)) { apply(action); return; }
         if (action.type !== 'rename') { controller.current?.abort(); historyController.current?.abort(); setEvidence([]); }
         if (action.type === 'new') { apply(action); setStatus(null); return; }
@@ -102,6 +104,7 @@ export function useChat() {
                 if (event.type === 'status') setStatus(event);
                 if (event.type === 'error') { setStatus(null); setError(event.message ?? 'Processing failed.'); }
                 if (event.type === 'answer') {
+                    setRevealingMessageId(`${request}:answer`);
                     apply({ type: 'answer', conversationId: chat, messageId: `${request}:answer`, text: event.content!, now: Date.now() });
                     setEvidence(event.evidence ?? []); setStatus(null);
                 }
@@ -119,6 +122,6 @@ export function useChat() {
         } catch (reason) { showError(reason); }
     };
     const conversation = state.conversations.find(c => c.id === state.activeId);
-    return { state, dispatch, conversation, storageError, connected, busy, ready, error, status, evidence, stop, clear,
+    return { state, dispatch, revealingMessageId, conversation, storageError, connected, busy, ready, error, status, evidence, stop, clear,
         draft: state.drafts[state.activeId ?? 'new'] ?? '', send };
 }

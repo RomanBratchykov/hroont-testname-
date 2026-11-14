@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
+import { Mascot } from '../../../components/Mascot';
 export interface MascotContext {
-    status: 'idle' | 'composing' | 'conversation';
+    status: 'idle' | 'composing' | 'conversation' | 'thinking';
 }
 export type MascotRenderer = (context: MascotContext) => ReactNode;
-/** A future animated mascot can render here without coupling to chat state or layout. */
-export function MascotSlot({ render, status }: MascotContext & {
+/** Keep custom renderers optional while supplying Soily in every normal run mode. */
+export function MascotSlot({ render, status, animated = true }: MascotContext & {
     render?: MascotRenderer;
+    animated?: boolean;
 }) {
-    if (!render) return null;
-    return <div className="mascot-slot">{render({ status })}</div>;
+    return <div className="mascot-slot" data-state={status}>{render ? render({ status }) : <Mascot animated={animated} status={status} />}</div>;
 }

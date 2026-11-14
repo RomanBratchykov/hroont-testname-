@@ -24,6 +24,6 @@ export function Composer({ value, onChange, onSend, busy = false, disabled = fal
             }
         }}/>
     {files.length > 0 && <p className="field-hint">{files.map(file => file.name).join(", ")} <button type="button" className="quiet-button" onClick={() => setFiles([])}>Remove</button></p>}
-    <div className="composer-toolbar"><ModelSelector />{connected && <label className="quiet-button file-picker">Attach<input type="file" accept=".md,.txt,.json,.xlsx" multiple disabled={busy || disabled} onChange={event => setFiles(Array.from(event.target.files ?? []))} /></label>}{busy ? <button type="button" className="quiet-button" onClick={onStop}>Stop</button> : <button className="send-button" type="submit" disabled={disabled || (!value.trim() && !files.length)} aria-label="Send message"><Icon name="arrow" size={20}/></button>}</div>
+    <div className="composer-toolbar"><div className="composer-tools"><ModelSelector /><label className="icon-button file-picker" title="Attach files"><Icon name="paperclip" /><input aria-label="Attach files" type="file" accept=".md,.txt,.json,.xlsx" multiple disabled={!connected || busy || disabled} onChange={event => setFiles(Array.from(event.target.files ?? []))} /></label></div>{busy ? <button type="button" className="quiet-button" onClick={onStop}>Stop</button> : <button className="send-button" type="submit" disabled={disabled || (!value.trim() && !files.length)} aria-label="Send message"><Icon name="arrow" size={20}/></button>}</div>
   </form>;
 }

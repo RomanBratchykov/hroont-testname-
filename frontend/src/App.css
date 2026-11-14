@@ -549,3 +549,50 @@
 .tool-evidence pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
 .translation-setting { display: flex; align-items: center; gap: 10px; margin-top: 24px; }
 .message p { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Soily greets empty chats and accompanies assistant replies. */
+.soily-mascot { display: block; width: 100%; aspect-ratio: 500 / 650; }
+.soily-mascot img { display: block; width: 100%; height: auto; object-fit: contain; image-rendering: auto; }
+.chat-intro-mascot { width: clamp(140px, 24svh, 210px); margin: 0 auto 20px; }
+.chat-intro-mascot .mascot-slot { margin: 0; min-height: 0; }
+.message-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 14px; align-items: end; margin-bottom: 28px; }
+.message-row > .message { grid-column: 2; grid-row: 1; min-width: 0; margin-bottom: 0; }
+.message-mascot { grid-column: 1; grid-row: 1; width: 64px; aspect-ratio: 500 / 650; transform-origin: top left; pointer-events: none; position: relative; z-index: 0; }
+.message-mascot .mascot-slot { width: 100%; margin: 0; min-height: 0; }
+.processing-status .mascot-slot { width: 32px; height: auto; margin: 0; min-height: 0; overflow: visible; }
+@media (max-width: 760px) {
+  .message-row { grid-template-columns: 44px minmax(0, 1fr); gap: 8px; }
+  .message-mascot { width: 44px; }
+  .message-row .message { padding: 16px; }
+  .chat-intro-mascot { width: clamp(120px, 22svh, 175px); }
+}
+
+.composer-tools { display: flex; align-items: center; gap: 6px; min-width: 0; }
+
+.file-picker:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Dialogue: Soily speaks from the left, the user from the right. */
+.message-row-assistant { margin-right: clamp(16px, 6vw, 64px); }
+.message-row-user { display: flex; justify-content: flex-end; margin-left: clamp(32px, 10vw, 100px); }
+.message-row-user > .message { max-width: 100%; }
+.account-menu { position: relative; border-top: 1px solid var(--border); padding-top: 14px; }
+.account-trigger { display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 8px; cursor: pointer; list-style: none; font-size: 12px; }
+.account-trigger::-webkit-details-marker { display: none; }
+.account-trigger:hover { background: var(--hover); }
+.account-name { flex: 1; }
+.account-name > span { display: block; margin-top: 4px; font-size: 10px; color: var(--muted); }
+.account-options { position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; z-index: 5; display: flex; flex-direction: column; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 4px 18px #0002; }
+.account-options > button { text-align: left; padding: 12px; border-radius: 6px; }
+.file-picker:has(input:disabled) { opacity: .45; cursor: not-allowed; }
+
+/* Keep artwork below message content and the sticky input. */
+.messages { position: relative; isolation: isolate; z-index: 0; }
+.message-row > .message { position: relative; z-index: 1; }
+.conversation-composer { z-index: 2; }
+.welcome-content { position: relative; isolation: isolate; }
+.welcome-content > .composer { position: relative; z-index: 1; }
+.chat-intro-mascot { position: relative; z-index: 0; pointer-events: none; }
+.conversation-end { height: 1px; flex-shrink: 0; }
+.reply-writing::after { content: ''; display: inline-block; width: 2px; height: 1em; margin-left: 3px; vertical-align: text-bottom; background: currentColor; animation: writing-caret 1s step-end infinite; }
+@keyframes writing-caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .reply-writing::after { animation: none; } }

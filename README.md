@@ -17,7 +17,7 @@ Use `ollama list` to find an installed model. Pick one that supports tools and t
 The launcher does not download models.
 
 ```bash
-./run.sh --provider ollama --model qwen3.5:4b
+./run.sh --provider ollama --model qwen3.5:4b-q4_K_M 
 ```
 
 Open **http://127.0.0.1:8000**. The app builds the frontend and serves it with the API.

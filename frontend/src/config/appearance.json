@@ -5,9 +5,7 @@
     "mono": "ui-monospace, SFMono-Regular, Consolas, monospace"
   },
   "greeting": {
-    "animation": "/media/greeting.gif",
-    "still": "/media/greeting.png",
-    "durationMs": 2400
+    "durationMs": 2440
   },
   "models": [
     { "id": "balanced", "label": "Balanced" },

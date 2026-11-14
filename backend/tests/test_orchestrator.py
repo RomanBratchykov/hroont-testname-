@@ -588,3 +588,26 @@ def test_request_ids_cannot_collide_with_assistant_message_ids(tmp_path):
                 )
             )
             assert result[-1]["type"] == "answer"
+
+
+def test_model_receives_unlabelled_topics_and_conversational_guidance(tmp_path):
+    import re
+
+    from backend.orchestrator import Orchestrator
+    from backend.store import Store
+
+    store = Store(tmp_path / "context.sqlite")
+    store.begin("field-a", "friendly-turn", "My field is near Kharkiv.", "fast", [])
+    engine = Orchestrator(settings(tmp_path), store, None, None)
+    messages = engine.context("field-a", "My field is near Kharkiv.", [])
+    policy = messages[0]["content"]
+    assert not re.search(r"\bQ\d{2}\b", policy)
+    assert "farmer-interview assistant" not in policy
+    assert "Internal field-information reference" in policy
+    assert "Do not copy" in policy
+    assert "one short, relevant question" in policy
+    # Retain the information needs without exposing the numbered questionnaire.
+    assert "GeoJSON/KML" in policy
+    assert "irrigated" in policy
+    assert "Unknown is valid" in policy
+    assert messages[-1]["content"] == "My field is near Kharkiv."
