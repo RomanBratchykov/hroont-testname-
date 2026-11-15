@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AppearanceContext } from './appearanceContext';
 import type { ReactNode } from 'react';
 import config from '../../config/appearance.json';
+import { avatars } from './avatars';
 import { themes } from './themes';
 import type { Theme } from './themes';
 
@@ -16,6 +17,14 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     const saved = readPreference('hroont.theme');
     return saved === 'light' || saved === 'dark' ? saved : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
+  const [avatar, updateAvatar] = useState(() => {
+    const saved = readPreference('hroont.avatar');
+    return avatars.some(option => option.id === saved) ? saved! : avatars[0].id;
+  });
+  const setAvatar = (next: string) => {
+    if (!avatars.some(option => option.id === next)) return;
+    updateAvatar(next); savePreference('hroont.avatar', next);
+  };
   const [showTranslationStatus, updateTranslationStatus] = useState(() => readPreference('hroont.translation-status') !== 'off');
   const setShowTranslationStatus = (show: boolean) => { updateTranslationStatus(show); savePreference('hroont.translation-status', show ? 'on' : 'off'); };
   const [model, updateModel] = useState(() => {
@@ -36,5 +45,5 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     if (!config.models.some(model => model.id === next)) return;
     updateModel(next); savePreference('hroont.model', next);
   };
-  return <AppearanceContext.Provider value={{ theme, setTheme, model, setModel, showTranslationStatus, setShowTranslationStatus }}>{children}</AppearanceContext.Provider>;
+  return <AppearanceContext.Provider value={{ avatar, setAvatar, theme, setTheme, model, setModel, showTranslationStatus, setShowTranslationStatus }}>{children}</AppearanceContext.Provider>;
 }

@@ -39,3 +39,14 @@
 .personal-section dt { color: var(--muted); font-size: 12px; }
 .personal-section dd { margin: 0; overflow-wrap: anywhere; font-size: 13px; }
 @media (max-width: 480px) { .workspace-page { padding-top: 12px; } .theme-grid { gap: 12px; } .theme-swatch { height: 80px; padding: 8px; gap: 5px; } .personal-section dl > div { grid-template-columns: 1fr; gap: 5px; } }
+
+.avatar-options { border: 0; padding: 0; margin: 30px 0; min-width: 0; }
+.avatar-options legend { font-size: 16px; font-weight: 550; }
+.avatar-options p { color: var(--muted); font-size: 12px; margin: 7px 0 20px; }
+.avatar-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; max-width: 580px; }
+.avatar-option { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--outline); border-radius: 10px; cursor: pointer; font-size: 12px; }
+.avatar-option.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.avatar-option:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
+.avatar-option img { width: 100%; max-width: 88px; aspect-ratio: 1; object-fit: contain; }
+.avatar-option input { accent-color: var(--accent); }
+@media (max-width: 480px) { .avatar-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

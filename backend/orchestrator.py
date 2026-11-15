@@ -2,12 +2,10 @@
 
 import asyncio
 import json
-import re
 import time
 import uuid
 from decimal import Decimal
 
-import httpx
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import ValidationError
 
@@ -70,42 +68,12 @@ class Orchestrator:
         self.active = 0
 
     async def translate(self, text: str) -> str:
-        if not requires_translation(text):
-            return text
-        if not self.config.translation_url:
+        if requires_translation(text):
             raise ProviderError(
-                "translation_unavailable",
-                "Non-English input requires English translation. Configure a LibreTranslate-compatible "
-                "TRANSLATION_URL or supply English text. Nothing was sent to the model.",
+                "unsupported_language",
+                "I currently support English only. Please send your message in English.",
             )
-        body = {"q": text, "source": "auto", "target": "en", "format": "text"}
-        if self.config.translation_key:
-            body["api_key"] = self.config.translation_key
-        try:
-            response = await self.provider.http.post(
-                self.config.translation_url,
-                json=body,
-                timeout=1 if len(text) <= 1000 else 30,
-            )
-            response.raise_for_status()
-            translated = response.json()["translatedText"]
-            if (
-                not isinstance(translated, str)
-                or not translated.strip()
-                or requires_translation(translated)
-            ):
-                raise ValueError("Translation incomplete")
-            # Numeric tokens must survive translation; identifiers still require user review.
-            if re.findall(r"\d+(?:[.,]\d+)?", text) != re.findall(
-                r"\d+(?:[.,]\d+)?", translated
-            ):
-                raise ValueError("Translation changed numeric values")
-            return translated
-        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-            raise ProviderError(
-                "translation_unavailable",
-                "Translation failed or exceeded its time limit. Supply English text or try later.",
-            ) from exc
+        return text
 
     def context(self, chat: str, translated: str, tools: list[dict]) -> list[dict]:
         messages = [
@@ -171,7 +139,7 @@ class Orchestrator:
             # UTF-8 bytes + message overhead conservatively bound text tokens. Reserve full output.
             maximum = (
                 (size + 64 * len(messages) + 1024) * config.input_rate
-                + config.max_output_tokens * config.output_rate
+                + config.output_tokens(thinking) * config.output_rate
             ) / 1_000_000
             charge = uuid.uuid4().hex
             self.store.reserve(charge, maximum, config.phase, config.phase_budget)
@@ -207,20 +175,7 @@ class Orchestrator:
             acquired = True
             self.active += 1
             self.store.running(request)
-            if requires_translation(content):
-                yield {
-                    "type": "status",
-                    "stage": "translating",
-                    "message": "Translating to English…",
-                }
             translated = await self.translate(content)
-            if translated != content:
-                # Store translated counterpart locally; raw original remains in the message record.
-                with self.store.connect() as db:
-                    db.execute(
-                        "INSERT OR REPLACE INTO translations VALUES (?,?)",
-                        (request, translated),
-                    )
             tools = self.tools(chat)
             schemas = [convert_to_openai_tool(tool) for tool in tools.values()]
             messages = self.context(chat, translated, schemas)

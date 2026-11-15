@@ -25,6 +25,7 @@ class Settings(BaseModel):
     concurrency: int = Field(default=4, ge=1, le=4)
     max_context_bytes: int = Field(default=32000, ge=8000, le=128000)
     max_output_tokens: int = Field(default=1024, ge=64, le=4096)
+    max_reasoning_tokens: int = Field(default=4096, ge=64, le=32768)
     request_timeout: float = Field(default=120, gt=0, le=600)
     translation_url: str = ""
     translation_key: str = Field(default="", repr=False)
@@ -54,6 +55,13 @@ class Settings(BaseModel):
             "deepseek-flash" if self.provider == "deepseek" else "qwen3.5:4b"
         )
 
+    def output_tokens(self, thinking: bool) -> int:
+        return (
+            max(self.max_output_tokens, self.max_reasoning_tokens)
+            if thinking
+            else self.max_output_tokens
+        )
+
     @property
     def phase_budget(self):
         return Decimal(2) if self.phase == "demo" else Decimal(3)
@@ -76,6 +84,8 @@ class Settings(BaseModel):
             ("DEEPSEEK_INPUT_USD_PER_MILLION", "input_rate"),
             ("DEEPSEEK_OUTPUT_USD_PER_MILLION", "output_rate"),
             ("MODEL_TIMEOUT_SECONDS", "request_timeout"),
+            ("MODEL_MAX_OUTPUT_TOKENS", "max_output_tokens"),
+            ("MODEL_MAX_REASONING_TOKENS", "max_reasoning_tokens"),
         ]:
             if os.getenv(env):
                 values[name] = os.environ[env]

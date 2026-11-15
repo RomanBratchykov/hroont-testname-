@@ -298,7 +298,7 @@ def test_no_fallback_and_cyrillic_not_sent_untranslated(tmp_path):
                 },
             )
         )
-        assert result[-1]["code"] == "translation_unavailable"
+        assert result[-1]["code"] == "unsupported_language"
         assert client.get("/api/health").json()["provider"] == "ollama"
 
 
@@ -379,29 +379,9 @@ def test_cancelled_turn_releases_slot_and_is_not_replayed(tmp_path):
     asyncio.run(check())
 
 
-def test_history_tool_never_sends_original_cyrillic_to_model(tmp_path):
-    received = []
-
+def test_non_english_is_rejected_even_when_translation_is_configured(tmp_path):
     def upstream(request):
-        body = json.loads(request.content)
-        if request.url.path == "/translate":
-            return httpx.Response(
-                200, json={"translatedText": "My field is 30 hectares"}
-            )
-        received.append(body)
-        if len(received) == 1:
-            return httpx.Response(
-                200,
-                json=ollama_reply(
-                    "", [{"function": {"name": "read_history", "arguments": {}}}]
-                ),
-            )
-        tool_result = json.loads(body["messages"][-1]["content"])
-        assert not any(
-            "\u0400" <= char <= "\u052f"
-            for char in json.dumps(tool_result, ensure_ascii=False)
-        )
-        return httpx.Response(200, json=ollama_reply("Where is the field?"))
+        pytest.fail("Unsupported input must not reach translation or model services")
 
     config = settings(tmp_path, translation_url="http://127.0.0.1:5000/translate")
     with TestClient(
@@ -411,23 +391,18 @@ def test_history_tool_never_sends_original_cyrillic_to_model(tmp_path):
             client.post(
                 "/api/chat",
                 json={
-                    "action": "send",
                     "conversation_id": "a",
                     "request_id": "r",
                     "message": "Моє поле 30 гектарів",
                 },
             )
         )
-        assert result[-1]["type"] == "answer"
-        read = client.post(
-            "/api/chat", json={"action": "read", "conversation_id": "a"}
-        ).json()
-        assert read["messages"][0]["content"] == "Моє поле 30 гектарів"
-        client.post("/api/chat", json={"action": "clear"})
-    from backend.store import Store
-
-    with Store(config.database_path).connect() as db:
-        assert db.execute("SELECT COUNT(*) FROM translations").fetchone()[0] == 0
+        assert result[-1]["code"] == "unsupported_language"
+        assert (
+            result[-1]["message"]
+            == "I currently support English only. Please send your message in English."
+        )
+        assert not any(event.get("stage") == "translating" for event in result)
 
 
 def test_spreadsheet_and_text_are_parsed_locally_with_units_and_formulas(tmp_path):
@@ -566,7 +541,7 @@ def test_unsupported_scripts_are_not_dispatched_untranslated(tmp_path, message):
                 json={"conversation_id": "a", "request_id": "r", "message": message},
             )
         )
-        assert result[-1]["code"] == "translation_unavailable"
+        assert result[-1]["code"] == "unsupported_language"
 
 
 def test_request_ids_cannot_collide_with_assistant_message_ids(tmp_path):
@@ -611,3 +586,54 @@ def test_model_receives_unlabelled_topics_and_conversational_guidance(tmp_path):
     assert "irrigated" in policy
     assert "Unknown is valid" in policy
     assert messages[-1]["content"] == "My field is near Kharkiv."
+
+
+@pytest.mark.parametrize("mode,expected", [("fast", 1024), ("thinking", 4096)])
+def test_reasoning_has_separate_output_budget(tmp_path, mode, expected):
+    def upstream(request):
+        body = json.loads(request.content)
+        assert body["options"]["num_predict"] == expected
+        assert body["think"] is (mode == "thinking")
+        return httpx.Response(200, json=ollama_reply())
+
+    with TestClient(
+        create_app(settings(tmp_path), transport=httpx.MockTransport(upstream))
+    ) as client:
+        result = events(
+            client.post(
+                "/api/chat",
+                json={
+                    "conversation_id": "a",
+                    "request_id": "r",
+                    "message": "Hello",
+                    "mode": mode,
+                },
+            )
+        )
+        assert result[-1]["type"] == "answer"
+
+
+def test_reasoning_exhaustion_is_reported_without_exposing_private_thoughts(tmp_path):
+    def upstream(request):
+        reply = ollama_reply("")
+        reply["message"]["thinking"] = "private reasoning"
+        reply["done_reason"] = "length"
+        return httpx.Response(200, json=reply)
+
+    with TestClient(
+        create_app(settings(tmp_path), transport=httpx.MockTransport(upstream))
+    ) as client:
+        result = events(
+            client.post(
+                "/api/chat",
+                json={
+                    "conversation_id": "a",
+                    "request_id": "r",
+                    "message": "Hello",
+                    "mode": "thinking",
+                },
+            )
+        )
+        assert result[-1]["code"] == "reasoning_limit"
+        assert "private reasoning" not in json.dumps(result)
+        assert "Fast" in result[-1]["message"]

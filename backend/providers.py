@@ -62,7 +62,7 @@ class Provider:
                 "model": config.model_name,
                 "messages": messages,
                 "stream": False,
-                "max_tokens": config.max_output_tokens,
+                "max_tokens": config.output_tokens(thinking),
                 "thinking": {"type": "enabled" if thinking else "disabled"},
             }
             headers = {"Authorization": f"Bearer {config.api_key}"}
@@ -73,7 +73,7 @@ class Provider:
                 "messages": messages,
                 "stream": False,
                 "think": thinking,
-                "options": {"num_predict": config.max_output_tokens},
+                "options": {"num_predict": config.output_tokens(thinking)},
             }
             headers = {}
         if tools:
@@ -131,6 +131,19 @@ class Provider:
                 )
                 truncated = data.get("done_reason") == "length"
             parsed = AssistantMessage.model_validate(raw_message)
+            if (
+                thinking
+                and truncated
+                and parsed.role == "assistant"
+                and not parsed.content
+                and not parsed.tool_calls
+                and (parsed.thinking or parsed.reasoning_content)
+            ):
+                raise ProviderError(
+                    "reasoning_limit",
+                    "I reached the reasoning limit before I could finish an answer. "
+                    "Please try a narrower question or switch to Fast mode.",
+                )
             if parsed.role != "assistant" or (
                 not parsed.content and not parsed.tool_calls
             ):

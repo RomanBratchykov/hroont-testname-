@@ -17,7 +17,7 @@ export function Composer({ value, onChange, onSend, busy = false, disabled = fal
         input.current.style.height = `${Math.min(input.current.scrollHeight, 220)}px`;
     }, [value]);
     return <form className="composer" onSubmit={e => { e.preventDefault(); submit(); }}>
-    <textarea ref={input} aria-label="Message Hroont" placeholder="Where shall we start?" value={value} rows={2} onChange={e => onChange(e.target.value)} onKeyDown={e => {
+    <textarea ref={input} aria-label="Message Croptato" placeholder="Where shall we start?" value={value} rows={2} onChange={e => onChange(e.target.value)} onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 submit();

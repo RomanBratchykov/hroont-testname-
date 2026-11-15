@@ -1,6 +1,8 @@
 import { createContext, useContext } from 'react';
 import type { Theme } from './themes';
 export interface Appearance {
+  avatar: string;
+  setAvatar: (avatar: string) => void;
   theme: Theme;
   setTheme: (theme: Theme) => void;
   showTranslationStatus: boolean;

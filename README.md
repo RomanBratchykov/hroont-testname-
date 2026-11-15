@@ -10,6 +10,10 @@ Run commands from this folder.
 cp .env.example .env
 ```
 
+```bash
+cloudflared tunnel run gravitydefiers
+```
+
 ## Test with local Ollama
 
 Start Ollama separately (`ollama serve` if it is not already running).

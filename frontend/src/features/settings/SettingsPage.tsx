@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
+import { avatars } from './avatars';
 import { Icon } from '../../components/Icon';
 import { useAppearance } from './appearanceContext';
 
 export function SettingsPage({ onBack }: { onBack: () => void }) {
-  const { theme, setTheme, showTranslationStatus, setShowTranslationStatus } = useAppearance();
+  const { theme, setTheme, avatar, setAvatar } = useAppearance();
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { heading.current?.focus(); }, []);
 
@@ -17,8 +18,12 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
           <span className="theme-option-label"><Icon name={option === 'light' ? 'sun' : 'moon'} />{option === 'light' ? 'Light' : 'Dark'}<input type="radio" name="theme" value={option} checked={theme === option} onChange={() => setTheme(option)} /></span>
         </label>)}</div>
       </fieldset>
-      <label className="translation-setting"><input type="checkbox" checked={showTranslationStatus} onChange={event => setShowTranslationStatus(event.target.checked)} /> Show translation status beside the mascot</label>
-      <p className="field-hint">Hiding this notice keeps translation enabled.</p>
+      <fieldset className="avatar-options"><legend>Your avatar</legend><p>Choose the avatar shown beside your messages.</p>
+        <div className="avatar-grid">{avatars.map(option => <label className={`avatar-option ${avatar === option.id ? 'selected' : ''}`} key={option.id}>
+          <img src={option.src} alt=""/><span>{option.label}</span><input type="radio" name="avatar" value={option.id} checked={avatar === option.id} onChange={() => setAvatar(option.id)}/>
+        </label>)}</div>
+      </fieldset>
+      <p>Soily currently supports English only.</p>
       <p className="settings-saved" role="status">Your appearance preference is saved on this device when browser storage is available.</p>
     </div>
   </section>;

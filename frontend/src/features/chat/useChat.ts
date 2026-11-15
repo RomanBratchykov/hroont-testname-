@@ -118,10 +118,10 @@ export function useChat() {
         controller.current?.abort(); historyController.current?.abort();
         try {
             if (connected) await command({ action: 'clear' });
-            apply({ type: 'replace', state: initialState }); setStatus(null); setEvidence([]);
+            apply({ type: 'replace', state: initialState }); setStatus(null); setEvidence([]); setError('');
         } catch (reason) { showError(reason); }
     };
     const conversation = state.conversations.find(c => c.id === state.activeId);
-    return { state, dispatch, revealingMessageId, conversation, storageError, connected, busy, ready, error, status, evidence, stop, clear,
+    return { state, dispatch, revealingMessageId, conversation, storageError, connected, busy, ready, error, reportError: setError, status, evidence, stop, clear,
         draft: state.drafts[state.activeId ?? 'new'] ?? '', send };
 }

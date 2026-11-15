@@ -547,7 +547,7 @@
 .file-picker input { position: absolute; opacity: 0; width: 100%; height: 100%; inset: 0; cursor: pointer; }
 .tool-evidence { max-width: 100%; padding: 16px; }
 .tool-evidence pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
-.translation-setting { display: flex; align-items: center; gap: 10px; margin-top: 24px; }
+.translation-setting { display: flex; align-items: center; gap: 15px; margin-top: 24px; }
 .message p { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* Soily greets empty chats and accompanies assistant replies. */
@@ -578,7 +578,8 @@
 .account-menu { position: relative; border-top: 1px solid var(--border); padding-top: 14px; }
 .account-trigger { display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 8px; cursor: pointer; list-style: none; font-size: 12px; }
 .account-trigger::-webkit-details-marker { display: none; }
-.account-trigger:hover { background: var(--hover); }
+.account-trigger:hover { background: #d1d5db; color: var(--text); }
+[data-theme="dark"] .account-trigger:hover { background: #40444c; }
 .account-name { flex: 1; }
 .account-name > span { display: block; margin-top: 4px; font-size: 10px; color: var(--muted); }
 .account-options { position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; z-index: 5; display: flex; flex-direction: column; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 4px 18px #0002; }
@@ -596,3 +597,19 @@
 .reply-writing::after { content: ''; display: inline-block; width: 2px; height: 1em; margin-left: 3px; vertical-align: text-bottom; background: currentColor; animation: writing-caret 1s step-end infinite; }
 @keyframes writing-caret { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .reply-writing::after { animation: none; } }
+
+.workspace-menu { position: relative; }
+.workspace-menu summary { display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; }
+.workspace-menu summary::-webkit-details-marker { display: none; }
+.workspace-options { position: absolute; top: calc(100% + 12px); left: 0; z-index: 20; min-width: 170px; padding: 8px; background: var(--sidebar, #fff); border: 1px solid var(--border, #ddd); border-radius: 12px; box-shadow: 0 8px 24px #0002; }
+.soily-notices { width: min(100%, 850px); margin: 16px auto; padding: 0 24px; box-sizing: border-box; }
+@media (max-width: 760px) { .workspace-menu .workspace-name { display: flex; font-size: 12px; } }
+
+.message-user-avatar { grid-column: 1; grid-row: 1; justify-self: center; display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: var(--sidebar); color: var(--secondaryText); }
+
+.user-avatar { display: block; width: 100%; height: 100%; object-fit: contain; }
+.brand-logo { display: inline-flex; align-items: center; gap: 10px; font: 500 20px/1.2 var(--font-body); color: var(--text); }
+.brand-logo img { display: block; width: 34px; height: 34px; object-fit: contain; }
+.message-user-avatar { background: transparent; border-radius: 0; }
+
+@media (max-width: 760px) { .message-user-avatar { width: 44px; height: 44px; } }
