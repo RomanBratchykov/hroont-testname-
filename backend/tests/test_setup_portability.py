@@ -53,3 +53,42 @@ def test_ollama_environment_does_not_override_deepseek_default():
     launcher.select_provider(env, None, None)
     assert env["MODEL_PROVIDER"] == "deepseek"
     assert env["MODEL_NAME"] == "deepseek-flash"
+
+
+def test_chat_only_setup_does_not_need_docker_or_torch(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(launcher, "ROOT", tmp_path)
+    python = tmp_path / "python"
+    python.touch()
+    monkeypatch.setattr(launcher, "PYTHON", python)
+    monkeypatch.setattr(launcher, "runtime_checks", lambda: ("node", "npm"))
+    monkeypatch.setattr(launcher, "ensure_env_file", lambda: None)
+    monkeypatch.setattr(
+        launcher,
+        "database_prerequisites",
+        lambda env: (_ for _ in ()).throw(AssertionError("Docker must not be checked")),
+    )
+    monkeypatch.setattr(
+        launcher.subprocess, "run", lambda command, **kwargs: calls.append(command)
+    )
+    launcher.setup(with_rag=False)
+    assert len(calls) == 2
+    assert str(tmp_path / "backend/requirements.txt") in calls[0]
+    assert calls[1] == ["npm", "ci"]
+    assert not any("torch" in str(command) for command in calls)
+
+
+def test_render_external_url_is_used_when_public_origin_is_empty(monkeypatch):
+    from backend.config import Settings
+
+    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://croptato-example.onrender.com")
+    monkeypatch.setenv("PUBLIC_ORIGIN", "")
+    assert Settings.from_env().public_origin == "https://croptato-example.onrender.com"
+
+
+def test_explicit_public_origin_takes_precedence_over_render(monkeypatch):
+    from backend.config import Settings
+
+    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://croptato-example.onrender.com")
+    monkeypatch.setenv("PUBLIC_ORIGIN", "https://farm.example.org")
+    assert Settings.from_env().public_origin == "https://farm.example.org"

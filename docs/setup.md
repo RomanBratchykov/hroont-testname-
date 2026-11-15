@@ -1,3 +1,29 @@
+# Quick fallback when hosting is unavailable
+
+Download or clone the complete repository. Install Python 3.12+ (3.12 recommended) with pip/venv and Node.js 22.18+ (22.x) or 24+ with npm. Internet and funded DeepSeek API access are required. No local model or GPU is needed for the default fallback.
+
+From the project folder on Linux/macOS:
+
+```bash
+python3 start_deepseek.py
+```
+
+On Windows:
+
+```powershell
+py -3 start_deepseek.py
+```
+
+The launcher installs missing backend/frontend dependencies, privately prompts for a missing DeepSeek key, and asks for missing input/output USD-per-million token rates from the official pricing page. It saves entered settings in the ignored `.env` file, preserving other settings (mode 0600 on POSIX; Windows follows account ACLs). You can instead configure these variables beforehand. It builds the frontend and prints the local URL, normally `http://127.0.0.1:8000`. Ctrl+C stops the app. The API key stays on the backend. Starting the app makes no paid inference request; chatting uses DeepSeek credit and the configured app budget.
+
+Use `--setup` to reinstall dependencies, `--setup-only` to install without starting or configuring credentials, or `--port 8080` if port 8000 is occupied. Copy source and input data between computers, not `.venv` or `node_modules`. The launcher reuses the existing app and selects hosted DeepSeek even if the copied environment points to Ollama or a Render URL.
+
+The default fallback includes chat, attachments and the saved synthetic example dashboard; it does not start retrieval databases or download embedding models. For the full retrieval setup, use `--with-rag`; this requires Docker Compose or running local PostgreSQL/Qdrant, full dependencies and separately indexed source data. No startup service is installed. This workflow is tested on Linux; Windows/macOS launch paths are provided but have not been run on those operating systems.
+
+## Render hostname errors
+
+Set `PUBLIC_ORIGIN` to the exact HTTPS URL you open, without a trailing slash, and redeploy. If it is empty, the backend automatically uses Render's `RENDER_EXTERNAL_URL`. Explicit custom domains take precedence. Unrelated hosts and browser origins remain rejected. This code must be pushed to the deployed branch before Render can use the fix.
+
 # Portable local setup
 
 Use the same checkout on Linux, macOS or Windows. Install Python 3.12 or newer with venv/pip, Node.js 22.18+ (22.x) or 24+ with npm, and Docker Engine/Desktop with the Compose plugin. Start Docker before setup. No NVIDIA GPU is required: embeddings use CPU PyTorch. Availability of binary wheels still depends on your Python version and CPU architecture; use a mainstream 64-bit Python supported by PyTorch. A Python released before its dependencies have wheels may require an older supported Python or native build tools.

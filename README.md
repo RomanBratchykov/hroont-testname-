@@ -164,3 +164,5 @@ John is a test persona. Kherson, the synthetic 30-ha rainfed field, and the thre
 follow the technical specification; none is a validated scientific recommendation.
 Chat can discuss hypothetical changes but cannot overwrite the shared example. Editing the JSON
 and restarting the app publishes an updated example. Scientific analysis is not connected.
+
+For a local fallback using hosted DeepSeek, run `python3 start_deepseek.py` (Windows: `py -3 start_deepseek.py`). It installs missing dependencies and prompts privately for configuration. See [fallback setup](docs/setup.md).

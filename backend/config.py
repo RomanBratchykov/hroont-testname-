@@ -139,7 +139,8 @@ class Settings(BaseModel):
             "ollama_url": os.getenv("OLLAMA_URL", "http://127.0.0.1:11434"),
             "openai_base_url": openai_base_url,
             "rag_url": os.getenv("RAG_URL", ""),
-            "public_origin": os.getenv("PUBLIC_ORIGIN", ""),
+            "public_origin": os.getenv("PUBLIC_ORIGIN")
+            or os.getenv("RENDER_EXTERNAL_URL", ""),
             "phase": os.getenv("BUDGET_PHASE", "testing"),
             "translation_url": os.getenv("TRANSLATION_URL", ""),
             "translation_key": os.getenv("TRANSLATION_API_KEY", ""),

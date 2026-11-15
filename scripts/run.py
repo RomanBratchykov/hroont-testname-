@@ -162,10 +162,10 @@ def doctor() -> int:
     return 0 if runtime_ok and stores_ok and PYTHON.exists() else 1
 
 
-def setup() -> None:
+def setup(with_rag: bool = True) -> None:
     _, npm = runtime_checks()
     ensure_env_file()
-    if not database_prerequisites(environment()):
+    if with_rag and not database_prerequisites(environment()):
         raise SystemExit(
             "Start Docker Desktop/Engine with Compose, or provide running PostgreSQL and Qdrant at the configured localhost URLs. See docs/setup.md. Dependencies were not installed."
         )
@@ -176,13 +176,29 @@ def setup() -> None:
             raise SystemExit(
                 "Python venv/pip is unavailable. Install your OS Python venv package (python3-venv on Debian/Ubuntu), then rerun --setup."
             ) from exc
+    if with_rag:
+        subprocess.run(
+            [
+                str(PYTHON),
+                "-m",
+                "pip",
+                "install",
+                *torch_install_args(platform.system()),
+            ],
+            check=True,
+            cwd=ROOT,
+        )
     subprocess.run(
-        [str(PYTHON), "-m", "pip", "install", *torch_install_args(platform.system())],
-        check=True,
-        cwd=ROOT,
-    )
-    subprocess.run(
-        [str(PYTHON), "-m", "pip", "install", "-r", str(ROOT / "requirements.txt")],
+        [
+            str(PYTHON),
+            "-m",
+            "pip",
+            "install",
+            "-r",
+            str(
+                ROOT / ("requirements.txt" if with_rag else "backend/requirements.txt")
+            ),
+        ],
         check=True,
         cwd=ROOT,
     )
@@ -325,7 +341,7 @@ def main() -> int:
     if args.doctor:
         return doctor()
     if args.setup:
-        setup()
+        setup(with_rag=not args.no_rag)
         return 0
 
     env = environment()
