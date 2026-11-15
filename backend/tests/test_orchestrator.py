@@ -637,3 +637,29 @@ def test_reasoning_exhaustion_is_reported_without_exposing_private_thoughts(tmp_
         assert result[-1]["code"] == "reasoning_limit"
         assert "private reasoning" not in json.dumps(result)
         assert "Fast" in result[-1]["message"]
+
+
+def test_configured_public_origin_accepts_tunnel_and_rejects_other_sites(tmp_path):
+    config = settings(tmp_path, public_origin="https://gravitydefiers.dpdns.org")
+    with TestClient(create_app(config), base_url=config.public_origin) as client:
+        assert client.get("/api/health").status_code == 200
+        assert (
+            client.post(
+                "/api/chat",
+                headers={"Origin": config.public_origin},
+                json={"action": "list"},
+            ).status_code
+            == 200
+        )
+        assert (
+            client.post(
+                "/api/chat",
+                headers={"Origin": "https://other.example"},
+                json={"action": "list"},
+            ).status_code
+            == 403
+        )
+        assert (
+            client.get("/api/health", headers={"Host": "other.example"}).status_code
+            == 400
+        )

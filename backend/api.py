@@ -91,23 +91,24 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
         redoc_url=None,
         openapi_url=None,
     )
-    app.add_middleware(
-        TrustedHostMiddleware,
-        allowed_hosts=["localhost", "127.0.0.1", "[::1]", "testserver"],
-    )
+    allowed_hosts = ["localhost", "127.0.0.1", "[::1]", "testserver"]
+    if config.public_origin:
+        allowed_hosts.append(urlsplit(config.public_origin).hostname)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
     @app.middleware("http")
     async def local_requests(request, call_next):
         origin = request.headers.get("origin")
         if origin:
             parsed = urlsplit(origin)
-            if parsed.scheme != "http" or parsed.hostname not in {
+            local_origin = parsed.scheme == "http" and parsed.hostname in {
                 "localhost",
                 "127.0.0.1",
                 "::1",
-            }:
+            }
+            if not local_origin and origin != config.public_origin:
                 return JSONResponse(
-                    {"detail": "Only local browser origins are allowed."},
+                    {"detail": "This browser origin is not allowed."},
                     status_code=403,
                 )
         if request.method == "POST":

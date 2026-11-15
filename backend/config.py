@@ -17,6 +17,7 @@ class Settings(BaseModel):
     database_path: Path = ROOT / "data" / "orchestrator.sqlite"
     api_key: str = Field(default="", repr=False)
     ollama_url: str = "http://127.0.0.1:11434"
+    public_origin: str = ""
     phase: Literal["testing", "demo"] = "testing"
     input_rate: Decimal | None = Field(default=None, gt=0)
     output_rate: Decimal | None = Field(default=None, gt=0)
@@ -34,6 +35,22 @@ class Settings(BaseModel):
     def local_model_server(self):
         from urllib.parse import urlsplit
 
+        if self.public_origin:
+            public = urlsplit(self.public_origin)
+            if (
+                public.scheme != "https"
+                or not public.hostname
+                or public.username
+                or public.password
+                or public.path
+                or public.query
+                or public.fragment
+                or "*" in public.netloc
+                or self.public_origin != f"https://{public.netloc}"
+            ):
+                raise ValueError(
+                    "PUBLIC_ORIGIN must be an exact HTTPS origin without a path."
+                )
         url = urlsplit(self.ollama_url)
         if url.scheme != "http" or url.hostname not in {
             "localhost",
@@ -76,6 +93,7 @@ class Settings(BaseModel):
             ),
             "api_key": os.getenv("DEEPSEEK_API_KEY", ""),
             "ollama_url": os.getenv("OLLAMA_URL", "http://127.0.0.1:11434"),
+            "public_origin": os.getenv("PUBLIC_ORIGIN", ""),
             "phase": os.getenv("BUDGET_PHASE", "testing"),
             "translation_url": os.getenv("TRANSLATION_URL", ""),
             "translation_key": os.getenv("TRANSLATION_API_KEY", ""),

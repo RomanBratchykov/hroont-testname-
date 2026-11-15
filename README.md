@@ -10,9 +10,16 @@ Run commands from this folder.
 cp .env.example .env
 ```
 
+For the existing tunnel, set `PUBLIC_ORIGIN=https://gravitydefiers.dpdns.org` in `.env`.
+Start the production app on the tunnel’s configured port, then run the tunnel in another terminal:
+
 ```bash
+./run.sh --port 5173
 cloudflared tunnel run gravitydefiers
 ```
+
+The public origin allows only that hostname and browser origin. This demo shares one workspace;
+use Cloudflare Access to restrict who can reach it.
 
 ## Test with local Ollama
 
