@@ -65,7 +65,7 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
             transport=transport, follow_redirects=False, trust_env=False
         ) as http:
             app.state.engine = Orchestrator(
-                config, store, Provider(config, http), build_tools(store)
+                config, store, Provider(config, http), build_tools(store, config)
             )
 
             async def cleanup():
@@ -144,8 +144,12 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
                 "limit_usd": float(config.phase_budget),
             },
             "configured": config.provider == "ollama"
+            or bool(config.openai_base_url)
             or bool(config.api_key and config.input_rate and config.output_rate),
-            "scientific_tools": [],
+            "scientific_tools": ["search_agronomy_knowledge", "query_crop_soil_db"]
+            if config.rag_url
+            else [],
+            "rag_configured": bool(config.rag_url),
             "translation_configured": bool(config.translation_url),
         }
 

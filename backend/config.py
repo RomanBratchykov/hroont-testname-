@@ -17,6 +17,8 @@ class Settings(BaseModel):
     database_path: Path = ROOT / "data" / "orchestrator.sqlite"
     api_key: str = Field(default="", repr=False)
     ollama_url: str = "http://127.0.0.1:11434"
+    openai_base_url: str = ""
+    rag_url: str = ""
     public_origin: str = ""
     phase: Literal["testing", "demo"] = "testing"
     input_rate: Decimal | None = Field(default=None, gt=0)
@@ -64,6 +66,32 @@ class Settings(BaseModel):
             raise ValueError(
                 "Ollama URL must not contain credentials, query or fragment."
             )
+        if self.rag_url and self.rag_url != "direct":
+            rag = urlsplit(self.rag_url)
+            if (
+                rag.scheme not in {"http", "https"}
+                or not rag.hostname
+                or rag.username
+                or rag.password
+                or rag.query
+                or rag.fragment
+            ):
+                raise ValueError(
+                    "RAG_URL must be 'direct' or a valid HTTP(S) URL without credentials."
+                )
+        if self.openai_base_url:
+            base = urlsplit(self.openai_base_url)
+            if (
+                base.scheme not in {"http", "https"}
+                or not base.hostname
+                or base.username
+                or base.password
+                or base.query
+                or base.fragment
+            ):
+                raise ValueError(
+                    "OPENAI_BASE_URL must be a valid HTTP(S) URL without credentials."
+                )
         return self
 
     @property
@@ -85,14 +113,21 @@ class Settings(BaseModel):
 
     @classmethod
     def from_env(cls):
+        provider = os.getenv("MODEL_PROVIDER", "ollama")
+        openai_base_url = os.getenv("OPENAI_BASE_URL", "")
+        model = os.getenv("MODEL_NAME", "")
+        if not model and provider == "deepseek" and openai_base_url:
+            model = os.getenv("DEEPSEEK_MODEL", "")
         values = {
-            "provider": os.getenv("MODEL_PROVIDER", "ollama"),
-            "model": os.getenv("MODEL_NAME", ""),
+            "provider": provider,
+            "model": model,
             "database_path": os.getenv(
                 "DATABASE_PATH", str(ROOT / "data/orchestrator.sqlite")
             ),
-            "api_key": os.getenv("DEEPSEEK_API_KEY", ""),
+            "api_key": os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY", ""),
             "ollama_url": os.getenv("OLLAMA_URL", "http://127.0.0.1:11434"),
+            "openai_base_url": openai_base_url,
+            "rag_url": os.getenv("RAG_URL", ""),
             "public_origin": os.getenv("PUBLIC_ORIGIN", ""),
             "phase": os.getenv("BUDGET_PHASE", "testing"),
             "translation_url": os.getenv("TRANSLATION_URL", ""),

@@ -10,6 +10,13 @@ Run commands from this folder.
 cp .env.example .env
 ```
 
+On Windows PowerShell:
+
+```powershell
+.\run.ps1 --setup
+Copy-Item .env.example .env
+```
+
 For the existing tunnel, set `PUBLIC_ORIGIN=https://gravitydefiers.dpdns.org` in `.env`.
 Start the production app on the tunnel’s configured port, then run the tunnel in another terminal:
 
@@ -44,6 +51,14 @@ Use uncached input and the highest output rate applicable to your selected model
 ```bash
 ./run.sh --provider deepseek --model deepseek-flash
 ```
+
+To use a local DeepSeek model (e.g., `deepseek-r1:8b` via Ollama's OpenAI-compatible `/v1` API), set `OPENAI_BASE_URL=http://localhost:11434/v1` and `DEEPSEEK_MODEL=deepseek-r1:8b` in `.env` (no paid API rates required), or run:
+
+```bash
+./run.sh --provider deepseek --model deepseek-r1:8b
+```
+
+When starting in full mode (default or `--dev`), the launcher automatically brings up `RAG/docker-compose.yml` (PostgreSQL + Qdrant), runs `RAG/scripts/ingest_data.py --if-empty` if databases are empty, starts the RAG FastAPI service on port `8001` (`--rag-port`), and wires `RAG_URL` into the main backend (`--no-rag` disables this; `--with-rag` enables it with `--backend-only`; `--ingest` forces re-ingestion).
 
 Testing has a **$3** limit. To use the separate **$2 demo** allowance:
 
