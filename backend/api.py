@@ -2,8 +2,10 @@
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import logging
+import secrets
 from contextlib import asynccontextmanager
 from typing import Literal
 from urllib.parse import urlsplit
@@ -19,7 +21,7 @@ from backend.config import ROOT, Settings
 from backend.documents import Attachment, extract
 from backend.orchestrator import Orchestrator
 from backend.providers import Provider
-from backend.store import Conflict, Store
+from backend.store import Conflict, SessionCapacity, Store
 from backend.tools import build_tools
 
 log = logging.getLogger(__name__)
@@ -127,7 +129,35 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
                         {"detail": "Request exceeds 15 MB."}, status_code=413
                     )
             request._body = bytes(body)
-        return await call_next(request)
+        guest_token = None
+        if request.url.path == "/api/chat" and request.method == "POST":
+            guest_token = request.cookies.get("croptato_guest", "")
+            if len(guest_token) != 43 or not all(
+                char.isalnum() or char in "-_" for char in guest_token
+            ):
+                guest_token = secrets.token_urlsafe(32)
+            owner = hashlib.sha256(guest_token.encode()).hexdigest()
+            try:
+                store.admit_guest(owner, 4 if config.provider == "deepseek" else None)
+            except SessionCapacity as exc:
+                return JSONResponse(
+                    {"detail": str(exc)}, status_code=429, headers={"Retry-After": "60"}
+                )
+            request.state.owner = owner
+        response = await call_next(request)
+        if guest_token:
+            response.set_cookie(
+                "croptato_guest",
+                guest_token,
+                httponly=True,
+                secure=bool(config.public_origin)
+                and request.headers.get("host", "").split(":")[0]
+                == urlsplit(config.public_origin).hostname,
+                samesite="lax",
+                max_age=30 * 86400,
+                path="/",
+            )
+        return response
 
     @app.get("/api/health")
     async def health():
@@ -135,7 +165,8 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
             "status": "ok",
             "provider": config.provider,
             "model": config.model_name,
-            "workspace": "local-demo-admin",
+            "workspace": "private-guest",
+            "max_active_users": 4 if config.provider == "deepseek" else None,
             "active": app.state.engine.active,
             "capacity": config.concurrency,
             "phase": config.phase,
@@ -152,8 +183,15 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
     @app.post("/api/chat")
     async def chat(payload: ChatRequest, request: Request):
         store.expire()
+        owner = request.state.owner
         if payload.action == "list":
-            return {"conversations": store.list_chats()}
+            return {"conversations": store.list_chats(owner)}
+        if payload.conversation_id:
+            existing = store.read(payload.conversation_id)
+            if (payload.action != "send" or existing is not None) and not store.owns(
+                payload.conversation_id, owner
+            ):
+                raise HTTPException(404, "Chat not found.")
         if payload.action == "read":
             result = store.read(payload.conversation_id)
             if result is None:
@@ -163,9 +201,14 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
             identifiers = [
                 identifier
                 for identifier in list(active)
-                if payload.action == "clear"
-                or (store.run_record(identifier) or {}).get("conversation_id")
-                == payload.conversation_id
+                if store.owns(
+                    (store.run_record(identifier) or {}).get("conversation_id"), owner
+                )
+                and (
+                    payload.action == "clear"
+                    or (store.run_record(identifier) or {}).get("conversation_id")
+                    == payload.conversation_id
+                )
             ]
             tasks = [
                 active[identifier] for identifier in identifiers if identifier in active
@@ -173,7 +216,9 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-            store.delete(None if payload.action == "clear" else payload.conversation_id)
+            store.delete(
+                None if payload.action == "clear" else payload.conversation_id, owner
+            )
             return {"status": "deleted"}
         if payload.action == "rename":
             if not store.rename(payload.conversation_id, payload.title.strip()):
@@ -204,7 +249,10 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
                 content,
                 payload.mode,
                 [file.name for file in payload.files],
+                owner=owner,
             )
+        except PermissionError as exc:
+            raise HTTPException(404, "Chat not found.") from exc
         except Conflict as exc:
             raise HTTPException(409, str(exc)) from exc
         if previous and previous["status"] in {"queued", "running"}:

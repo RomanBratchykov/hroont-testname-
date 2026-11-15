@@ -28,6 +28,8 @@ export function useChat() {
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
     const [revealingMessageId, setRevealingMessageId] = useState<string | null>(null);
+    const [connectionAttempt, setConnectionAttempt] = useState(0);
+    const retry = () => { setError(''); setConnectionAttempt(value => value + 1); };
     const [ready, setReady] = useState(!connected);
     const [status, setStatus] = useState<ChatEvent | null>(null);
     const [evidence, setEvidence] = useState<unknown[]>([]);
@@ -58,7 +60,7 @@ export function useChat() {
             setReady(true);
         }).catch(reason => { if (!abort.signal.aborted) showError(reason); });
         return () => abort.abort();
-    }, [apply, showError]);
+    }, [apply, showError, connectionAttempt]);
     useEffect(() => {
         const abort = () => { controller.current?.abort(); historyController.current?.abort(); };
         window.addEventListener('pagehide', abort);
@@ -122,6 +124,6 @@ export function useChat() {
         } catch (reason) { showError(reason); }
     };
     const conversation = state.conversations.find(c => c.id === state.activeId);
-    return { state, dispatch, revealingMessageId, conversation, storageError, connected, busy, ready, error, reportError: setError, status, evidence, stop, clear,
+    return { state, dispatch, revealingMessageId, conversation, storageError, connected, busy, ready, retry, error, reportError: setError, status, evidence, stop, clear,
         draft: state.drafts[state.activeId ?? 'new'] ?? '', send };
 }

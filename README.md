@@ -65,8 +65,13 @@ There is no automatic provider fallback.
 ./run.sh --provider ollama --port 8080    # Built app on a different local port
 ```
 
-Connected modes share one local demo administrator workspace. The preview login is not
-real authentication. All services bind to localhost; there is no hosting/tunnel setup.
+Guest access is the default: each browser gets a private server-side workspace, identified by
+an HttpOnly cookie retained for 30 days. Browsers sharing cookies share a workspace; use different
+browser profiles or devices for separate users. Clearing cookies loses access to that guest history.
+DeepSeek accepts at most four active guests; a slot expires after 30 minutes without a chat API request,
+unless a model request is still running. Ollama has no guest limit. Both use up to four concurrent model calls.
+Chat ownership is checked on the server, including history clearing and model tool access.
+Existing chats without an owner remain stored but are not exposed to new guests.
 Frontend-only history stays in browser storage and is separate from server history.
 
 ## Two API endpoints
@@ -115,3 +120,28 @@ npm --prefix frontend run lint
 
 Provider formats follow the official [Ollama chat API](https://docs.ollama.com/api/chat) and
 [DeepSeek tool calling](https://api-docs.deepseek.com/guides/tool_calls/) documentation.
+
+## Start Croptato automatically
+
+`scripts/croptato.service` is the user service for this PC. It runs the built app on port 5173,
+reads the provider/model from `.env`, and restarts after a failure. Its PATH includes this PC’s Node installation.
+Ollama and Cloudflared are separate system services. User lingering must be enabled to start before login.
+
+```bash
+systemctl --user status croptato.service
+journalctl --user -u croptato.service -f
+systemctl --user restart croptato.service
+systemctl --user disable --now croptato.service
+```
+
+## Judges’ test workspace
+
+The site opens directly with a Soily introduction on every page load; there is no login screen.
+All visitors can view John’s shared test profile (`/#/personal-state`) and saved example dashboard
+(`/#/dashboard`) without using a model slot. Visitor chats remain private guest sessions.
+The shared example is saved in `frontend/src/config/demo.json`, bundled with the site and supplied
+to Soily’s context. It survives server restarts and can be downloaded from the dashboard.
+John is a test persona. Kherson, the synthetic 30-ha rainfed field, and the three example rotations
+follow the technical specification; none is a validated scientific recommendation.
+Chat can discuss hypothetical changes but cannot overwrite the shared example. Editing the JSON
+and restarting the app publishes an updated example. Scientific analysis is not connected.

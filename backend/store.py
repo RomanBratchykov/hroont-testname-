@@ -15,6 +15,10 @@ class Conflict(Exception):
     pass
 
 
+class SessionCapacity(Exception):
+    pass
+
+
 class BudgetExceeded(Exception):
     pass
 
@@ -44,6 +48,12 @@ class Store:
                 CREATE INDEX IF NOT EXISTS message_chat ON messages(conversation_id, seq);
                 CREATE TABLE IF NOT EXISTS translations (
                     request_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE, english TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS guest_sessions (
+                    id TEXT PRIMARY KEY, last_seen REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS conversation_owners (
+                    conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+                    owner TEXT NOT NULL REFERENCES guest_sessions(id));
+                CREATE INDEX IF NOT EXISTS owner_chats ON conversation_owners(owner);
                 CREATE TABLE IF NOT EXISTS spending (
                     id TEXT PRIMARY KEY, phase TEXT NOT NULL, reserved INTEGER NOT NULL,
                     spent INTEGER NOT NULL DEFAULT 0);
@@ -74,12 +84,64 @@ class Store:
                 (time.time() - 30 * 86400,),
             )
 
-    def begin(self, chat: str, request: str, content: str, mode: str, files: list):
+    def admit_guest(self, identifier: str, limit: int | None):
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            now = time.time()
+            # An in-flight model request keeps its slot even if its browser is idle.
+            active = {
+                row[0]
+                for row in db.execute(
+                    "SELECT id FROM guest_sessions WHERE last_seen > ? OR id IN ("
+                    "SELECT o.owner FROM conversation_owners o JOIN runs r "
+                    "ON r.conversation_id=o.conversation_id WHERE r.status IN ('queued','running'))",
+                    (now - 1800,),
+                )
+            }
+            if limit is not None and identifier not in active and len(active) >= limit:
+                raise SessionCapacity(
+                    "I’m helping four users right now. Please try again when a slot becomes available."
+                )
+            db.execute(
+                "INSERT INTO guest_sessions VALUES (?,?) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen",
+                (identifier, now),
+            )
+
+    def owns(self, chat: str, owner: str) -> bool:
+        with self.connect() as db:
+            return (
+                db.execute(
+                    "SELECT 1 FROM conversation_owners WHERE conversation_id=? AND owner=?",
+                    (chat, owner),
+                ).fetchone()
+                is not None
+            )
+
+    def begin(
+        self,
+        chat: str,
+        request: str,
+        content: str,
+        mode: str,
+        files: list,
+        owner: str | None = None,
+    ):
         fingerprint = hashlib.sha256(
             json.dumps([chat, content, mode, files], sort_keys=True).encode()
         ).hexdigest()
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
+            if (
+                owner is not None
+                and db.execute(
+                    "SELECT 1 FROM conversations WHERE id=?", (chat,)
+                ).fetchone()
+                and not db.execute(
+                    "SELECT 1 FROM conversation_owners WHERE conversation_id=? AND owner=?",
+                    (chat, owner),
+                ).fetchone()
+            ):
+                raise PermissionError("Chat not found.")
             existing = db.execute(
                 "SELECT * FROM runs WHERE id=?", (request,)
             ).fetchone()
@@ -99,6 +161,11 @@ class Store:
                 "INSERT INTO conversations VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET updated_at=excluded.updated_at",
                 (chat, content[:60] or "File analysis", now),
             )
+            if owner is not None:
+                db.execute(
+                    "INSERT OR IGNORE INTO conversation_owners VALUES (?,?)",
+                    (chat, owner),
+                )
             db.execute(
                 "INSERT INTO runs VALUES (?,?,?,?,NULL,?)",
                 (request, chat, fingerprint, "queued", now),
@@ -169,12 +236,15 @@ class Store:
                 result.append(message)
             return result
 
-    def list_chats(self):
+    def list_chats(self, owner: str | None = None):
         with self.connect() as db:
             return [
                 dict(row)
                 for row in db.execute(
-                    "SELECT * FROM conversations ORDER BY updated_at DESC LIMIT 200"
+                    "SELECT * FROM conversations WHERE ? IS NULL OR id IN "
+                    "(SELECT conversation_id FROM conversation_owners WHERE owner=?) "
+                    "ORDER BY updated_at DESC LIMIT 200",
+                    (owner, owner),
                 )
             ]
 
@@ -187,10 +257,13 @@ class Store:
             return None
         return {**dict(row), "messages": self.history(chat, limit=500)}
 
-    def delete(self, chat=None):
+    def delete(self, chat=None, owner: str | None = None):
         with self.connect() as db:
             if chat is None:
-                db.execute("DELETE FROM conversations")
+                db.execute(
+                    "DELETE FROM conversations WHERE ? IS NULL OR id IN (SELECT conversation_id FROM conversation_owners WHERE owner=?)",
+                    (owner, owner),
+                )
             else:
                 db.execute("DELETE FROM conversations WHERE id=?", (chat,))
 

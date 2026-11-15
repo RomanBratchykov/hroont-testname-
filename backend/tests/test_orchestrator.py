@@ -81,8 +81,10 @@ def test_chat_persists_history_and_reuses_completed_request(tmp_path):
             ).status_code
             == 409
         )
+        saved_cookie = client.cookies.get("croptato_guest")
     with TestClient(
-        create_app(settings(tmp_path), transport=httpx.MockTransport(upstream))
+        create_app(settings(tmp_path), transport=httpx.MockTransport(upstream)),
+        cookies={"croptato_guest": saved_cookie},
     ) as client:
         assert (
             len(
@@ -663,3 +665,115 @@ def test_configured_public_origin_accepts_tunnel_and_rejects_other_sites(tmp_pat
             client.get("/api/health", headers={"Host": "other.example"}).status_code
             == 400
         )
+
+
+def test_guest_workspaces_are_private_and_clear_only_own_history(tmp_path):
+    app = create_app(
+        settings(tmp_path),
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json=ollama_reply())
+        ),
+    )
+    with TestClient(app) as first, TestClient(app) as second:
+        payload = {"conversation_id": "private", "request_id": "r", "message": "Hello"}
+        assert events(first.post("/api/chat", json=payload))[-1]["type"] == "answer"
+        assert first.cookies.get("croptato_guest")
+        assert (
+            second.post("/api/chat", json={"action": "list"}).json()["conversations"]
+            == []
+        )
+        for action in ["read", "delete", "rename"]:
+            assert (
+                second.post(
+                    "/api/chat",
+                    json={
+                        "action": action,
+                        "conversation_id": "private",
+                        "title": "Stolen",
+                    },
+                ).status_code
+                == 404
+            )
+        assert (
+            second.post(
+                "/api/chat", json={**payload, "request_id": "another"}
+            ).status_code
+            == 404
+        )
+        assert second.post("/api/chat", json={"action": "clear"}).status_code == 200
+        assert (
+            first.post(
+                "/api/chat", json={"action": "read", "conversation_id": "private"}
+            ).status_code
+            == 200
+        )
+        assert second.post("/api/chat", json=payload).status_code == 404
+
+
+@pytest.mark.parametrize("provider,expected", [("deepseek", 429), ("ollama", 200)])
+def test_guest_capacity_is_provider_specific(tmp_path, provider, expected):
+    app = create_app(settings(tmp_path, provider=provider))
+    with TestClient(app) as client:
+        for _ in range(4):
+            client.cookies.clear()
+            assert client.post("/api/chat", json={"action": "list"}).status_code == 200
+        client.cookies.clear()
+        assert client.post("/api/chat", json={"action": "list"}).status_code == expected
+
+
+def test_guest_session_survives_reload_and_inactive_slot_can_be_reused(tmp_path):
+    config = settings(tmp_path, provider="deepseek")
+    app = create_app(config)
+    with TestClient(app) as client:
+        assert client.post("/api/chat", json={"action": "list"}).status_code == 200
+        cookie = client.cookies.get("croptato_guest")
+        assert cookie
+        assert client.post("/api/chat", json={"action": "list"}).status_code == 200
+        assert client.cookies.get("croptato_guest") == cookie
+        for _ in range(3):
+            client.cookies.clear()
+            assert client.post("/api/chat", json={"action": "list"}).status_code == 200
+        import sqlite3
+
+        with sqlite3.connect(config.database_path) as db:
+            db.execute("UPDATE guest_sessions SET last_seen=0")
+        client.cookies.clear()
+        assert client.post("/api/chat", json={"action": "list"}).status_code == 200
+
+
+def test_soily_receives_johns_demo_profile_and_saved_dashboard(tmp_path):
+    received = []
+
+    def upstream(request):
+        body = json.loads(request.content)
+        received.append(body)
+        return httpx.Response(
+            200, json=ollama_reply("John’s field is a demonstration example.")
+        )
+
+    with TestClient(
+        create_app(settings(tmp_path), transport=httpx.MockTransport(upstream))
+    ) as client:
+        result = events(
+            client.post(
+                "/api/chat",
+                json={
+                    "conversation_id": "demo",
+                    "request_id": "demo-question",
+                    "message": "Tell me about the test account.",
+                    "mode": "fast",
+                },
+            )
+        )
+        assert result[-1]["type"] == "answer"
+        context = "\n".join(
+            message["content"]
+            for message in received[0]["messages"]
+            if message["role"] == "system"
+        )
+        assert "John" in context
+        assert "Kherson" in context
+        assert "synthetic" in context
+        assert "saved example" in context
+        assert "Chickpea" in context
+        assert "Do not claim to save" in context

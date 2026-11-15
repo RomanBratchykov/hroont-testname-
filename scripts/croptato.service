@@ -1,0 +1,20 @@
+[Unit]
+Description=Croptato web application
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/home/roman/hroont
+Environment="PATH=/home/roman/.nvm/versions/node/v26.13.1/bin:/usr/local/bin:/usr/bin:/bin"
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/roman/hroont/scripts/run.py --port 5173
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillMode=control-group
+
+[Install]
+WantedBy=default.target

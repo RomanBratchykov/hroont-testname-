@@ -51,7 +51,12 @@ def build_tools(store: Store):
                 "datasets": [],
                 "scientific_tools": [],
                 "reason": "Scientific scripts and datasets will be added later. No NASA data has been fetched.",
-                "available": ["farmer interview", "conversation history"],
+                "available": [
+                    "farmer interview",
+                    "conversation history",
+                    "saved demonstration dashboard",
+                ],
+                "demo_dashboard": "John’s synthetic Kherson profile and example rotations are in the supplied system context; no scientific results have been computed.",
                 "recommendations": "deferred",
             }
 
