@@ -608,7 +608,8 @@ if __name__ == "__main__":
             engine.dispose()
     if not args.sql_only:
         try:
-            ingest_vector(QdrantClient(url=QDRANT_URL, timeout=60), args.data_dir)
+            api_key = os.getenv("QDRANT_API_KEY", "").strip()
+            ingest_vector(QdrantClient(url=QDRANT_URL, timeout=60, **({"api_key": api_key} if api_key else {})), args.data_dir)
         except Exception as exc:
             logger.exception("Vector ingestion failed")
             errors.append(str(exc))

@@ -1,3 +1,5 @@
+
+
 # AgroResilience — External API data specification (MVP)
 
 **Scope:** Data retrieved from NASA, ISRIC and FAOSTAT only. No farmer questionnaire. Coordinates and dates in links are examples for the pilot field; replace them dynamically.

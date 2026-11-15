@@ -17,6 +17,7 @@ class Settings(BaseModel):
     database_path: Path = ROOT / "data" / "orchestrator.sqlite"
     api_key: str = Field(default="", repr=False)
     earthdata_token: str = Field(default="", repr=False)
+    nasa_token: str = Field(default="", repr=False)
     ollama_url: str = "http://127.0.0.1:11434"
     openai_base_url: str = ""
     rag_url: str = ""
@@ -139,6 +140,7 @@ class Settings(BaseModel):
             ),
             "api_key": os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY", ""),
             "earthdata_token": os.getenv("EARTHDATA_TOKEN", "").strip(),
+            "nasa_token": os.getenv("NASA_TOKEN", "").strip(),
             "ollama_url": os.getenv("OLLAMA_URL", "http://127.0.0.1:11434"),
             "openai_base_url": openai_base_url,
             "rag_url": os.getenv("RAG_URL", ""),

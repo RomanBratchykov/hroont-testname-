@@ -26,7 +26,7 @@ function WritingReply({ text, onProgress }: { text: string; onProgress: () => vo
             setVisible(count);
             if (count < words.length) timer = window.setTimeout(reveal, replyWordDelay(words[count - 1]));
         };
-        timer = window.setTimeout(reveal, 150);
+        timer = window.setTimeout(reveal, replyWordDelay(''));
         return () => clearTimeout(timer);
     }, [words]);
     useLayoutEffect(() => {

@@ -149,7 +149,7 @@ async def climate(http, cache_path: Path, latitude, longitude):
         "cached": False,
     }
     try:
-        response = await http.get(url, timeout=60)
+        response = await get_with_retry(http, url, timeout=60)
         response.raise_for_status()
         if len(response.content) > 8 * 1024 * 1024:
             raise ValueError("Response too large")
@@ -237,7 +237,8 @@ def source_definitions(latitude, longitude):
             "id": "gpm",
             "name": "GPM IMERG Final V07",
             "urls": [
-                "https://gpm1.gesdisc.eosdis.nasa.gov/opendap/GPM_L3/GPM_3IMERGHH.07/"
+                "https://gpm1.gesdisc.eosdis.nasa.gov/opendap/GPM_L3/GPM_3IMERGHH.07/",
+                cmr("GPM_3IMERGHH", "07"),
             ],
             "kind": "catalog",
             "variables": "Half-hourly precipitation (mm/h)",
@@ -258,70 +259,168 @@ def source_definitions(latitude, longitude):
     ]
 
 
-async def check_sources(http, latitude, longitude, *, earthdata_token=""):
-    async def check(source):
-        statuses = []
-        for url in source["urls"]:
-            try:
-                # Never forward this credential to POWER, ISRIC, FAO or redirects.
-                parsed = urlsplit(url)
-                authenticated = earthdata_token and parsed.scheme == "https" and parsed.hostname in {
-                    "cmr.earthdata.nasa.gov", "gpm1.gesdisc.eosdis.nasa.gov",
+async def get_with_retry(http, url, *, timeout, headers=None, slots=None):
+    """At most one retry for transient GET failures; credentials never follow redirects."""
+    for attempt in range(2):
+        try:
+            if slots is None:
+                response = await http.get(
+                    url, timeout=timeout, headers=headers or {}, follow_redirects=False
+                )
+            else:
+                async with slots:
+                    response = await http.get(
+                        url,
+                        timeout=timeout,
+                        headers=headers or {},
+                        follow_redirects=False,
+                    )
+        except httpx.TransportError:
+            if attempt:
+                raise
+            await asyncio.sleep(0.2)
+            continue
+        if attempt or response.status_code not in {429, 502, 503, 504}:
+            return response
+        try:
+            delay = float(response.headers.get("retry-after", ".2"))
+        except ValueError:
+            return (
+                response  # An HTTP-date or unknown delay requires a later manual retry.
+            )
+        if not 0 <= delay <= 2:
+            return response
+        await asyncio.sleep(delay)
+    raise RuntimeError("GET retry loop did not return")
+
+
+async def check_sources(
+    http, latitude, longitude, *, earthdata_token="", nasa_token=""
+):
+    slots = asyncio.Semaphore(4)
+
+    async def probe(source, url):
+        item = {"url": url, "status": "unavailable"}
+        try:
+            parsed = urlsplit(url)
+            authenticated = (
+                earthdata_token
+                and parsed.scheme == "https"
+                and parsed.hostname
+                in {
+                    "cmr.earthdata.nasa.gov",
+                    "gpm1.gesdisc.eosdis.nasa.gov",
                 }
-                headers = {"Authorization": f"Bearer {earthdata_token}"} if authenticated else {}
-                response = await http.get(url, timeout=12, headers=headers, follow_redirects=False)
-                if response.status_code in (401, 403) or (
-                    response.is_redirect
-                    and "urs.earthdata.nasa.gov" in response.headers.get("location", "")
-                ):
-                    statuses.append("authentication_required")
-                    continue
-                response.raise_for_status()
-                if source["kind"] == "cmr":
-                    entries = response.json()["feed"]["entry"]
-                    if not isinstance(entries, list):
-                        raise ValueError("Invalid CMR entries")
-                    statuses.append("metadata_only" if entries else "no_coverage")
-                elif source["kind"] == "wcs":
-                    root = ElementTree.fromstring(response.content)
-                    if root.tag.split("}")[-1] != "Capabilities":
-                        raise ValueError("Not WCS capabilities")
-                    statuses.append("metadata_only")
-                elif source["kind"] == "power":
-                    data = response.json()
-                    if not all(v in data["properties"]["parameter"] for v in VARIABLES):
-                        raise ValueError("Missing variables")
-                    statuses.append("reachable")
-                elif source["kind"] == "fao":
-                    rows = response.json()["data"]
-                    if not isinstance(rows, list):
-                        raise ValueError("Invalid FAOSTAT rows")
-                    statuses.append("reachable" if rows else "no_coverage")
-                else:
-                    if "GPM_3IMERGHH" not in response.text:
-                        raise ValueError("Unexpected catalog")
-                    statuses.append("catalog_only")
-            except (
-                httpx.HTTPError,
-                ValueError,
-                KeyError,
-                TypeError,
-                ElementTree.ParseError,
+            )
+            headers = (
+                {"Authorization": f"Bearer {earthdata_token}"} if authenticated else {}
+            )
+            if (
+                source["kind"] == "nasa_key"
+                and parsed.scheme == "https"
+                and parsed.hostname == "api.nasa.gov"
             ):
-                statuses.append("unavailable")
-        status = statuses[0] if len(set(statuses)) == 1 else "partial"
+                headers = {"X-Api-Key": nasa_token}
+            response = await get_with_retry(
+                http, url, timeout=12, headers=headers, slots=slots
+            )
+            item["http_status"] = response.status_code
+            location = urlsplit(response.headers.get("location", ""))
+            if response.status_code in (401, 403) or (
+                response.is_redirect and location.hostname == "urs.earthdata.nasa.gov"
+            ):
+                return {
+                    **item,
+                    "status": "authentication_required",
+                    "reason": "credentials_missing_or_rejected",
+                }
+            if response.status_code == 429:
+                return {**item, "reason": "rate_limited"}
+            response.raise_for_status()
+            if len(response.content) > 1024 * 1024:
+                raise ValueError("Oversized source response")
+            if source["kind"] == "cmr" or parsed.hostname == "cmr.earthdata.nasa.gov":
+                entries = response.json()["feed"]["entry"]
+                if not isinstance(entries, list):
+                    raise ValueError("Invalid CMR entries")
+                status = "metadata_only" if entries else "no_coverage"
+            elif source["kind"] == "wcs":
+                root = ElementTree.fromstring(response.content)
+                if root.tag.split("}")[-1] != "Capabilities":
+                    raise ValueError("Not WCS capabilities")
+                status = "metadata_only"
+            elif source["kind"] == "power":
+                data = response.json()
+                if not all(v in data["properties"]["parameter"] for v in VARIABLES):
+                    raise ValueError("Missing variables")
+                status = "reachable"
+            elif source["kind"] == "fao":
+                rows = response.json()["data"]
+                if not isinstance(rows, list):
+                    raise ValueError("Invalid FAOSTAT rows")
+                status = "reachable" if rows else "no_coverage"
+            elif source["kind"] == "nasa_key":
+                if not isinstance(response.json().get("near_earth_objects"), list):
+                    raise ValueError("Invalid NASA Open APIs response")
+                status = "reachable"
+            else:
+                if "GPM_3IMERGHH" not in response.text:
+                    raise ValueError("Unexpected catalog")
+                status = "catalog_only"
+            return {**item, "status": status}
+        except httpx.TimeoutException:
+            return {**item, "reason": "timeout"}
+        except httpx.HTTPStatusError:
+            return {
+                **item,
+                "reason": "redirect_not_followed"
+                if 300 <= item["http_status"] < 400
+                else "http_error",
+            }
+        except httpx.TransportError:
+            return {**item, "reason": "connection_failed"}
+        except (
+            ValueError,
+            KeyError,
+            TypeError,
+            AttributeError,
+            ElementTree.ParseError,
+        ):
+            return {**item, "reason": "invalid_response"}
+
+    async def check(source):
+        checks = await asyncio.gather(*(probe(source, url) for url in source["urls"]))
+        statuses = {item["status"] for item in checks}
+        status = next(iter(statuses)) if len(statuses) == 1 else "partial"
         return {k: v for k, v in source.items() if k not in {"urls", "kind"}} | {
             "status": status,
             "source_url": source["urls"][0],
             "checked_at": now(),
-            "checks": [
-                {"url": u, "status": s} for u, s in zip(source["urls"], statuses)
-            ],
+            "checks": checks,
         }
 
+    async def nasa_access():
+        url = "https://api.nasa.gov/neo/rest/v1/neo/browse?page=0&size=1"
+        base = {
+            "name": "NASA Open APIs",
+            "source_url": url,
+            "checked_at": now(),
+            "limitation": "Credential/service check using NeoWs metadata only. Not field climate, Earthdata access or agronomic analysis.",
+        }
+        if not nasa_token:
+            return {
+                **base,
+                "status": "not_configured",
+                "reason": "Set NASA_TOKEN in the backend environment.",
+            }
+        return {**base, **await probe({"kind": "nasa_key"}, url)}
+
+    sources, nasa = await asyncio.gather(
+        asyncio.gather(*(check(s) for s in source_definitions(latitude, longitude))),
+        nasa_access(),
+    )
     return {
-        "sources": await asyncio.gather(
-            *(check(s) for s in source_definitions(latitude, longitude))
-        ),
+        "sources": sources,
+        "nasa_open_api": nasa,
         "geometry": {"type": "Point", "coordinates": [longitude, latitude]},
     }

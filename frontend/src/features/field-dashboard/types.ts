@@ -9,7 +9,14 @@ export interface ClimateData {
 export interface DataSource {
   id: string; name: string; status: string; variables: string; resolution: string;
   limitation: string; source_url: string; checked_at: string;
-  checks: { url: string; status: string }[];
+  checks: { url: string; status: string; reason?: string; http_status?: number }[];
+}
+export interface NasaAccess { status: string; reason?: string; limitation: string; source_url: string; checked_at: string }
+export function isNasaAccess(value: unknown): value is NasaAccess {
+  return !!value && typeof value === 'object' && 'status' in value && typeof value.status === 'string'
+    && 'limitation' in value && typeof value.limitation === 'string' && 'source_url' in value && typeof value.source_url === 'string'
+    && 'checked_at' in value && typeof value.checked_at === 'string'
+    && (!('reason' in value) || typeof value.reason === 'string');
 }
 export const PILOT: Location = { latitude: 46.7491, longitude: 32.7091 };
 export function validLocation(value: unknown): value is Location {

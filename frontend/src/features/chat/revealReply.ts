@@ -20,7 +20,7 @@ export async function revealReply(
     let visible = '';
     for (let index = 0; index < words.length; index++) {
         signal.throwIfAborted();
-        await wait(index ? replyWordDelay(words[index - 1]) : 150, signal);
+        await wait(index ? replyWordDelay(words[index - 1]) : replyWordDelay(''), signal);
         signal.throwIfAborted();
         visible += words[index];
         publish(visible);

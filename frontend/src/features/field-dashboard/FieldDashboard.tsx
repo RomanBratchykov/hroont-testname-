@@ -4,6 +4,7 @@ import { BoundaryInput } from './BoundaryPreview';
 import { ClimateChart } from './ClimateChart';
 import { PILOT, validLocation, type ClimateData, type DataSource, type Location, isClimateData, isSourceResponse } from './types';
 import './dashboard.css';
+import { isNasaAccess, type NasaAccess } from './types';
 
 const SOURCE_NAMES = ['NASA POWER Daily', 'ISRIC SoilGrids WCS', 'NASADEM', 'NASA HLS S30 / L30', 'GPM IMERG Final V07', 'FAOSTAT'];
 const STATUS_LABELS: Record<string, string> = { available: 'Data available', partial: 'Partial', unavailable: 'Unavailable', reachable: 'API responds', metadata_only: 'Metadata only', catalog_only: 'Catalog only', no_coverage: 'No matching data', authentication_required: 'Authentication required' };
@@ -23,6 +24,7 @@ export function FieldDashboard({ onAsk }: { onAsk: (question: string) => void })
   const [current, setCurrent] = useState<Location | null>(null);
   const [climate, setClimate] = useState<ClimateData | null>(null);
   const [sources, setSources] = useState<DataSource[] | null>(null);
+  const [nasaAccess, setNasaAccess] = useState<NasaAccess | null>(null);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState('');
@@ -43,14 +45,14 @@ export function FieldDashboard({ onAsk }: { onAsk: (question: string) => void })
     }
     climateRequest.current?.abort(); sourcesRequest.current?.abort();
     climateRequest.current = null; sourcesRequest.current = null;
-    setSelected(point); setCenter(point); setClimate(null); setSources(null); setError(''); setSourceError(''); setLoading(false); setChecking(false);
+    setSelected(point); setCenter(point); setClimate(null); setSources(null); setError(''); setSourceError(''); setLoading(false); setChecking(false); setNasaAccess(null);
     try { localStorage.setItem('croptato-field-point', JSON.stringify(point)); } catch { /* Selection still works without storage. */ }
   }, []);
   const query = `latitude=${selected.latitude.toFixed(4)}&longitude=${selected.longitude.toFixed(4)}`;
   const loadClimate = useCallback(async () => {
     climateRequest.current?.abort();
     const controller = new AbortController(); climateRequest.current = controller;
-    const timeout = window.setTimeout(() => controller.abort(new Error('NASA request timed out. Please retry.')), 75000);
+    const timeout = window.setTimeout(() => controller.abort(new Error('NASA request timed out. Please retry.')), 140000);
     setLoading(true); setClimate(null); setError('');
     try {
       const data = await request(`/api/field-data?${query}`, controller.signal);
@@ -63,11 +65,14 @@ export function FieldDashboard({ onAsk }: { onAsk: (question: string) => void })
     sourcesRequest.current?.abort();
     const controller = new AbortController(); sourcesRequest.current = controller;
     const timeout = window.setTimeout(() => controller.abort(new Error('Source check timed out. Please retry.')), 110000);
-    setChecking(true); setSourceError('');
+    setChecking(true); setNasaAccess(null); setSourceError('');
     try {
       const data = await request(`/api/data-sources?${query}`, controller.signal);
       if (!isSourceResponse(data)) throw new Error('Invalid source response.');
-      if (!controller.signal.aborted) setSources(data.sources);
+      if (!controller.signal.aborted) {
+        setSources(data.sources);
+        setNasaAccess('nasa_open_api' in data && isNasaAccess(data.nasa_open_api) ? data.nasa_open_api : null);
+      }
     } catch (e) { if (sourcesRequest.current === controller) setSourceError(e instanceof Error ? e.message : 'Could not check sources.'); }
     finally { clearTimeout(timeout); if (sourcesRequest.current === controller) setChecking(false); }
   }, [query]);
@@ -120,7 +125,8 @@ export function FieldDashboard({ onAsk }: { onAsk: (question: string) => void })
     </section>
     <section className="field-panel" aria-labelledby="sources-heading"><div className="field-panel-heading"><div><p className="page-eyebrow">03 / Verify</p><h2 id="sources-heading">Every source, in the open</h2><p className="field-note">All six sources from the external API specification. Only retrieved NASA POWER values feed the charts.</p></div><button className="field-button secondary" onClick={checkSources} disabled={checking}>{checking ? 'Checking endpoints…' : 'Check API status'}</button></div>
       {checking && <p role="status" className="field-note">Testing providers from the server. Slow or restricted endpoints may take up to 90 seconds.</p>}{sourceError && <p className="field-error" role="alert">{sourceError}</p>}
-      <div className="source-grid">{sources ? sources.map(source => <details className="source-card" key={source.id}><summary><span className="source-card-top"><span className="source-provider">{source.id === 'soilgrids' ? 'ISRIC' : source.id === 'faostat' ? 'FAO' : 'NASA'}</span><span className={`source-status ${source.status}`}>{STATUS_LABELS[source.status] ?? source.status}</span></span><strong>{source.name}</strong><span className="source-resolution">{source.resolution}</span><span className="source-expand">Inspect source & access details +</span></summary><p>{source.variables}</p><p>{source.limitation}</p><p>Checked {new Date(source.checked_at).toLocaleString()}. {source.id === 'power' ? 'One-day API probe; chart retrieval is separate.' : 'Not used in climate charts.'}</p><ul>{source.checks.map(check => <li key={check.url}><a href={check.url} target="_blank" rel="noreferrer">Exact request ↗</a> · {STATUS_LABELS[check.status] ?? check.status}</li>)}</ul></details>) : SOURCE_NAMES.map((name, i) => <div className="source-card unchecked" key={name}><div className="source-card-top"><span className="source-provider">{i === 1 ? 'ISRIC' : i === 5 ? 'FAO' : 'NASA'}</span><span className="source-status">Not checked</span></div><strong>{name}</strong><p>No live status has been measured yet.</p></div>)}</div>
+      <div className="source-grid">{sources ? sources.map(source => <details className="source-card" key={source.id}><summary><span className="source-card-top"><span className="source-provider">{source.id === 'soilgrids' ? 'ISRIC' : source.id === 'faostat' ? 'FAO' : 'NASA'}</span><span className={`source-status ${source.status}`}>{STATUS_LABELS[source.status] ?? source.status}</span></span><strong>{source.name}</strong><span className="source-resolution">{source.resolution}</span><span className="source-expand">Inspect source & access details +</span></summary><p>{source.variables}</p><p>{source.limitation}</p><p>Checked {new Date(source.checked_at).toLocaleString()}. {source.id === 'power' ? 'One-day API probe; chart retrieval is separate.' : 'Not used in climate charts.'}</p><ul>{source.checks.map(check => <li key={check.url}><a href={check.url} target="_blank" rel="noreferrer">Exact request ↗</a> · {STATUS_LABELS[check.status] ?? check.status}{check.http_status ? ` (HTTP ${check.http_status})` : ""}{check.reason ? ` - ${check.reason.replaceAll("_", " ")}` : ""}</li>)}</ul></details>) : SOURCE_NAMES.map((name, i) => <div className="source-card unchecked" key={name}><div className="source-card-top"><span className="source-provider">{i === 1 ? 'ISRIC' : i === 5 ? 'FAO' : 'NASA'}</span><span className="source-status">Not checked</span></div><strong>{name}</strong><p>No live status has been measured yet.</p></div>)}</div>
+      {nasaAccess && <div className="source-card"><strong>NASA Open APIs connection</strong><p role="status">{STATUS_LABELS[nasaAccess.status] ?? nasaAccess.status.replaceAll('_', ' ')}</p>{nasaAccess.reason && <p>{nasaAccess.reason.replaceAll('_', ' ')}</p>}<p>{nasaAccess.limitation}</p><small>Checked {new Date(nasaAccess.checked_at).toLocaleString()}. NASA_TOKEN and EARTHDATA_TOKEN authorize different services.</small></div>}
       <p className="field-note">A successful metadata or catalog request does not mean raster values were downloaded or analyzed. FAO-56 and RUSLE are calculation methods, not data APIs. Erosion and profitability remain uncomputed.</p>
     </section>
   </div>;

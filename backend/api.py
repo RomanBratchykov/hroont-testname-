@@ -21,8 +21,8 @@ from backend.config import ROOT, Settings
 from backend.documents import Attachment, extract
 from backend.field_data import check_sources, climate
 from backend.orchestrator import Orchestrator
-from backend.providers import Provider
 from backend.profile import ProfileUpdate
+from backend.providers import Provider
 from backend.store import Conflict, SessionCapacity, Store
 from backend.tools import build_tools, rag_health
 
@@ -221,6 +221,7 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
             return await check_sources(
                 app.state.data_http, latitude, longitude,
                 earthdata_token=config.earthdata_token,
+                nasa_token=config.nasa_token,
             )
 
     @app.post("/api/chat")

@@ -10,6 +10,17 @@ from RAG.app.db import PostgresHelper
 from RAG.app.qdrant_service import QdrantRetriever
 
 
+def test_qdrant_runtime_passes_private_api_key(monkeypatch):
+    from RAG.app import qdrant_service
+
+    calls = []
+    client = object()
+    monkeypatch.setenv("QDRANT_API_KEY", " private-qdrant-key ")
+    monkeypatch.setattr(qdrant_service, "QdrantClient", lambda **kwargs: calls.append(kwargs) or client)
+    assert QdrantRetriever(qdrant_url="https://qdrant.example").get_client() is client
+    assert calls == [{"url": "https://qdrant.example", "timeout": 10.0, "api_key": "private-qdrant-key"}]
+
+
 def test_sql_filters_rows_and_excludes_unlocated_tables():
     helper = PostgresHelper()
     helper._engine = create_engine("sqlite://")

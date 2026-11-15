@@ -17,8 +17,8 @@ test('empty and whitespace-only replies remain intact', () => {
 });
 
 test('typing pauses at punctuation and paragraph breaks without rushing ordinary words', () => {
-    assert.equal(replyWordDelay('field '), 150);
-    assert.equal(replyWordDelay('field, '), 240);
-    assert.equal(replyWordDelay('field.” '), 400);
-    assert.equal(replyWordDelay('field!\n\n'), 550);
+    assert.equal(replyWordDelay('field '), 75);
+    assert.equal(replyWordDelay('field, '), 120);
+    assert.equal(replyWordDelay('field.” '), 200);
+    assert.equal(replyWordDelay('field!\n\n'), 275);
 });

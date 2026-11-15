@@ -109,7 +109,8 @@ def test_source_status_distinguishes_metadata_and_denied_access(tmp_path, monkey
         }
         assert sources["nasadem"]["status"] == "metadata_only"
         assert sources["hls"]["status"] == "metadata_only"
-        assert sources["gpm"]["status"] == "authentication_required"
+        assert sources["gpm"]["status"] == "partial"
+        assert {check["status"] for check in sources["gpm"]["checks"]} == {"authentication_required", "metadata_only"}
         assert all(row["checked_at"] and row["source_url"] for row in sources.values())
 
 

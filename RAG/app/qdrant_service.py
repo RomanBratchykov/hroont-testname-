@@ -10,7 +10,10 @@ from typing import Any
 
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient, models
-from sentence_transformers import SentenceTransformer
+
+# Keep SQL retrieval and credential/collection checks usable without loading CPU model weights.
+# Tests and callers may provide a factory; otherwise the optional dependency loads on first use.
+SentenceTransformer = None
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +81,11 @@ class QdrantRetriever:
     def get_client(self) -> QdrantClient:
         with self._lock:
             if self._client is None:
-                self._client = QdrantClient(url=self.qdrant_url, timeout=10.0)
+                api_key = os.getenv("QDRANT_API_KEY", "").strip()
+                self._client = QdrantClient(
+                    url=self.qdrant_url, timeout=10.0,
+                    **({"api_key": api_key} if api_key else {}),
+                )
             return self._client
 
     def get_model(self) -> SentenceTransformer:
@@ -89,7 +96,10 @@ class QdrantRetriever:
                 )
             try:
                 if self._model is None:
-                    self._model = SentenceTransformer(
+                    factory = SentenceTransformer
+                    if factory is None:
+                        from sentence_transformers import SentenceTransformer as factory
+                    self._model = factory(
                         self.embedding_model_name, device="cpu"
                     )
                 if self._embedding_dimension is None:

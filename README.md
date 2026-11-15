@@ -158,6 +158,26 @@ it is not sent to the model or other data providers. Source checks still retriev
 catalogs; configuring a token does not implement raster downloads or scientific calculations.
 Generate a token through [Earthdata Login](https://urs.earthdata.nasa.gov/documentation/for_users/user_token).
 
+For the separate NASA Open APIs developer key from `api.nasa.gov`, set `NASA_TOKEN` in the
+backend environment (Render: backend service -> Environment), then redeploy. This credential
+is sent only to `api.nasa.gov` in the `X-Api-Key` header. The dashboard's NASA Open APIs card
+tests service/key access using a small NeoWs metadata request. It does not fetch field climate
+or authorize Earthdata downloads; `EARTHDATA_TOKEN` remains a separate setting. No private key
+is sent to the browser or model, included in probe URLs, or used in another provider's request.
+
+Provider probes run with at most four concurrent requests per check and one bounded retry for
+transient failures. Each failed probe exposes an HTTP code or safe reason such as timeout,
+rate limit or invalid response. GPM reports both CMR metadata and OPeNDAP catalog access, which
+can differ. Full probe evidence stays in Tool findings; model context receives compact actual
+statuses rather than large response metadata. Identical climate/source tool requests in a
+single chat turn reuse their results. Historical climate fetches allow time for one retry.
+
+For authenticated Qdrant set `QDRANT_API_KEY` alongside `QDRANT_URL` in both the retrieval and
+ingestion environments. SQL retrieval and Qdrant connection checks no longer require loading
+embedding dependencies; vector searches still require the configured embedding model and an
+indexed collection. Reference stores must still be provisioned and populated. `RAG_URL=direct`
+uses them in the backend process; a separate RAG HTTP service is currently restricted to localhost.
+
 Attach `.md`, `.txt`, `.json`, `.geojson`, `.csv` or `.tsv` through the picker, drag-and-drop,
 or clipboard file paste. Text must be UTF-8 and JSON must be valid. Images, PDFs, spreadsheets
 and other formats are rejected with instructions to paste relevant text or export a supported

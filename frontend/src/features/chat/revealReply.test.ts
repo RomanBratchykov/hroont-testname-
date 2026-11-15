@@ -11,8 +11,8 @@ test('new replies publish word prefixes with sentence pauses instead of a comple
     assert.equal(visible[1], 'Hello farmer.\n\n');
     assert.equal(visible.at(-1), 'Hello farmer.\n\nYour field is ready.');
     assert.equal(visible.length, 6);
-    assert.equal(delays[0], 150);
-    assert.equal(delays[2], 550);
+    assert.equal(delays[0], 75);
+    assert.equal(delays[2], 275);
     assert.ok(visible.slice(0, -1).every(value => value !== visible.at(-1)));
 });
 
@@ -30,13 +30,13 @@ test('the actual timer keeps later words hidden until their scheduled delay', as
     context.mock.timers.enable({ apis: ['setTimeout'] });
     const visible: string[] = [];
     const task = revealReply('Hello farmer.', value => visible.push(value), new AbortController().signal);
-    context.mock.timers.tick(149);
+    context.mock.timers.tick(74);
     await Promise.resolve();
     assert.deepEqual(visible, []);
     context.mock.timers.tick(1);
     await Promise.resolve();
     assert.deepEqual(visible, ['Hello ']);
-    context.mock.timers.tick(149);
+    context.mock.timers.tick(74);
     await Promise.resolve();
     assert.deepEqual(visible, ['Hello ']);
     context.mock.timers.tick(1);

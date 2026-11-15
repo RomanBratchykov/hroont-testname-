@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from backend.config import ROOT, Settings
 from backend.language import requires_translation
 from backend.providers import Provider, ProviderError
+from backend.source_summary import source_status_summary
 from backend.store import BudgetExceeded, Conflict, Store
 
 log = logging.getLogger(__name__)
@@ -172,6 +173,8 @@ class Orchestrator:
                     self.config.max_context_bytes
                     - self.payload_bytes(base_messages, tools),
                 )
+                # Reserve a share of actual free space, without erasing all retrieval evidence.
+                remaining -= min(4096, remaining // 2)
                 # JSON escaping also consumes context bytes (e.g. quoted CSV/SQL rows).
                 while (
                     len(json.dumps(rag_context, ensure_ascii=False).encode()) - 2
@@ -188,6 +191,9 @@ class Orchestrator:
         ]
         history = self.store.history(chat, limit=100, for_model=True)
         selected = []
+        base_size = self.payload_bytes(messages + [{"role": "user", "content": translated}], tools)
+        reserve = min(4096, max(0, (self.config.max_context_bytes - base_size) // 2))
+        history_limit = self.config.max_context_bytes - reserve
         # Latest message is the translated current input, not a second copy of its raw text.
         for row in reversed(history[:-1]):
             if requires_translation(row["content"]):
@@ -199,7 +205,7 @@ class Orchestrator:
                 + list(reversed(selected + [candidate]))
                 + [{"role": "user", "content": translated}]
             )
-            if self.payload_bytes(trial, tools) > self.config.max_context_bytes:
+            if self.payload_bytes(trial, tools) > history_limit:
                 break
             selected.append(candidate)
         messages += list(reversed(selected))
@@ -221,6 +227,21 @@ class Orchestrator:
 
     async def model_call(self, messages, schemas, thinking):
         config = self.config
+        source_calls = {
+            call.get("id") for message in messages for call in message.get("tool_calls", [])
+            if call.get("function", {}).get("name") == "check_data_sources" and call.get("id")
+        }
+        protected = set()
+        for message in messages:
+            if message["role"] != "tool" or not (
+                message.get("tool_name") == "check_data_sources"
+                or message.get("tool_call_id") in source_calls
+            ):
+                continue
+            result = json.loads(message["content"])
+            if isinstance(result, dict) and isinstance(result.get("sources"), list):
+                message["content"] = json.dumps(source_status_summary(result), ensure_ascii=False)
+                protected.add(id(message))
         size = self.payload_bytes(messages, schemas)
         if size > config.max_context_bytes:
             log.warning(
@@ -249,7 +270,7 @@ class Orchestrator:
         # Keep call IDs and reasoning intact: DeepSeek needs them for continuation.
         # Full results remain in the turn's evidence; never truncate JSON into invalid data.
         for message in sorted(
-            (m for m in messages if m["role"] == "tool"),
+            (m for m in messages if m["role"] == "tool" and id(m) not in protected),
             key=lambda m: len(m.get("content", "").encode()),
             reverse=True,
         ):
@@ -437,6 +458,7 @@ class Orchestrator:
                 mode == "auto" and (len(translated) > 600 or bool(files))
             )
             count = 0
+            gathered = {}
             started = time.monotonic()
             for step in range(self.config.max_model_calls):
                 yield {
@@ -513,18 +535,27 @@ class Orchestrator:
                                 raise TypeError("Tool arguments must be an object")
                             # Validate before invocation; model output never becomes executable code.
                             tools[name].args_schema.model_validate(args)
-                            result = await asyncio.wait_for(
-                                tools[name].ainvoke(args),
-                                timeout={
-                                    "get_climate_history": 75,
-                                    "check_data_sources": 100,
-                                }.get(name, 10),
-                            )
+                            cache_key = json.dumps([name, args], sort_keys=True)
+                            cacheable = name in {"get_climate_history", "check_data_sources"}
+                            if cacheable and cache_key in gathered:
+                                result = gathered[cache_key]
+                            else:
+                                result = await asyncio.wait_for(
+                                    tools[name].ainvoke(args),
+                                    timeout={
+                                        "get_climate_history": 130,
+                                        "check_data_sources": 100,
+                                    }.get(name, 10),
+                                )
                             if (
                                 not isinstance(result, dict)
-                                or len(json.dumps(result).encode()) > 16000
+                                or len(json.dumps(result).encode()) > (128000 if name == "check_data_sources" else 16000)
                             ):
                                 raise ValueError("Invalid or oversized tool result")
+                            if name == "check_data_sources" and isinstance(result.get("sources"), list):
+                                source_status_summary(result)
+                            if cacheable:
+                                gathered[cache_key] = result
                         except TimeoutError:
                             result = {
                                 "status": "unavailable",
@@ -536,7 +567,8 @@ class Orchestrator:
                                 "reason": "Tool arguments or result failed validation.",
                             }
                     evidence.append({"tool": name, "result": result})
-                    tool_message = {"role": "tool", "content": json.dumps(result)}
+                    model_result = source_status_summary(result) if name == "check_data_sources" and isinstance(result.get("sources"), list) else result
+                    tool_message = {"role": "tool", "content": json.dumps(model_result, ensure_ascii=False)}
                     if self.config.provider == "deepseek":
                         tool_message["tool_call_id"] = call.id
                     else:

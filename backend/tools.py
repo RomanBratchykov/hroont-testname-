@@ -12,8 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from backend.config import Settings
 from backend.field_data import check_sources, climate
-from backend.store import Store
 from backend.profile import ProfileUpdate
+from backend.store import Store
 
 log = logging.getLogger(__name__)
 
@@ -379,31 +379,10 @@ def build_tools(
                     result = await check_sources(
                         data_http, latitude, longitude,
                         earthdata_token=config.earthdata_token,
+                        nasa_token=config.nasa_token,
                     )
-                # Keep provider provenance and limitations without duplicating all probe URLs.
-                # The dashboard retains full per-property request details.
-                return {
-                    "geometry": result["geometry"],
-                    "sources": [
-                        {
-                            key: source[key]
-                            for key in (
-                                "id",
-                                "name",
-                                "status",
-                                "source_url",
-                                "checked_at",
-                                "limitation",
-                            )
-                        }
-                        | {
-                            "check_statuses": [
-                                check["status"] for check in source["checks"]
-                            ]
-                        }
-                        for source in result["sources"]
-                    ],
-                }
+                # Preserve complete evidence; the orchestrator sends a compact status summary.
+                return result
 
             tool_list.extend(
                 [
