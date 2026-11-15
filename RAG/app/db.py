@@ -24,7 +24,9 @@ REPO_ROOT = RAG_ROOT.parent
 load_dotenv(REPO_ROOT / ".env")
 load_dotenv(RAG_ROOT / ".env")
 
-DEFAULT_DATABASE_URL = "postgresql+psycopg2://agro_user:agro_password@localhost:5432/kherson_crop_db"
+DEFAULT_DATABASE_URL = (
+    "postgresql+psycopg2://agro_user:agro_password@localhost:5432/kherson_crop_db"
+)
 
 _STOP_WORDS = frozenset(
     {
@@ -80,9 +82,30 @@ _DOMAIN_SYNONYMS: dict[str, tuple[str, ...]] = {
     "maize": ("corn", "maize", "cimmyt", "texcoco"),
     "soybean": ("soybean", "hoytville", "wooster"),
     "yield": ("yield", "cropyield", "yld", "harvest", "production"),
-    "soil": ("soil", "soilparameter", "ph", "organic", "carbon", "clay", "sand", "silt", "moisture"),
+    "soil": (
+        "soil",
+        "soilparameter",
+        "ph",
+        "organic",
+        "carbon",
+        "clay",
+        "sand",
+        "silt",
+        "moisture",
+    ),
     "ph": ("soil", "soilparameter", "ph"),
-    "nutrient": ("nutrient", "nutr", "element", "trace", "nitrogen", "phosphorus", "potassium", "fym", "mg", "na"),
+    "nutrient": (
+        "nutrient",
+        "nutr",
+        "element",
+        "trace",
+        "nitrogen",
+        "phosphorus",
+        "potassium",
+        "fym",
+        "mg",
+        "na",
+    ),
     "nitrogen": ("nitrogen", "n_factor", "nutrient", "fertilizer", "urea"),
     "phosphorus": ("phosphorus", "p_factor", "nutrient", "phosphate"),
     "potassium": ("potassium", "k_factor", "nutrient", "potash"),
@@ -104,7 +127,9 @@ _FORBIDDEN_SQL_PATTERN = re.compile(
 
 
 def get_database_url() -> str:
-    return os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL).strip() or DEFAULT_DATABASE_URL
+    return (
+        os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL).strip() or DEFAULT_DATABASE_URL
+    )
 
 
 def _serialize_value(value: Any) -> Any:
@@ -158,7 +183,10 @@ class PostgresHelper:
                 url = self.database_url
                 kwargs: dict[str, Any] = {"pool_pre_ping": True}
                 if url.startswith("postgresql"):
-                    kwargs["connect_args"] = {"connect_timeout": 3}
+                    kwargs["connect_args"] = {
+                        "connect_timeout": 3,
+                        "options": "-c statement_timeout=5000",
+                    }
                 self._engine = create_engine(url, **kwargs)
             return self._engine
 
@@ -177,9 +205,23 @@ class PostgresHelper:
             engine = self.get_engine()
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            tables = self.list_tables()
+            inspector = inspect(engine)
+            schema = "public" if engine.dialect.name == "postgresql" else None
+            tables = sorted(
+                t
+                for t in inspector.get_table_names(schema=schema)
+                if t != "rag_ingestion_sources"
+            )
+            has_rows = False
+            with engine.connect() as conn:
+                for table in tables[:100]:
+                    quoted = engine.dialect.identifier_preparer.quote_identifier(table)
+                    if conn.execute(text(f"SELECT 1 FROM {quoted} LIMIT 1")).first():
+                        has_rows = True
+                        break
             return {
                 "connected": True,
+                "state": "ready" if has_rows else "empty",
                 "table_count": len(tables),
                 "tables": tables[:30],
             }
@@ -187,6 +229,7 @@ class PostgresHelper:
             logger.warning("PostgreSQL health check failed: %s", exc)
             return {
                 "connected": False,
+                "state": "unavailable",
                 "table_count": 0,
                 "tables": [],
                 "error": str(exc),
@@ -197,7 +240,11 @@ class PostgresHelper:
             engine = self.get_engine()
             inspector = inspect(engine)
             schema = "public" if engine.dialect.name == "postgresql" else None
-            tables = sorted(inspector.get_table_names(schema=schema))[:max_tables]
+            tables = sorted(
+                t
+                for t in inspector.get_table_names(schema=schema)
+                if t != "rag_ingestion_sources"
+            )[:max_tables]
             schemas: dict[str, list[str]] = {}
             for table in tables:
                 cols = inspector.get_columns(table, schema=schema)
@@ -205,7 +252,7 @@ class PostgresHelper:
             return schemas
         except (SQLAlchemyError, OSError) as exc:
             logger.warning("Failed to inspect PostgreSQL schemas: %s", exc)
-            return {}
+            raise RuntimeError("SQL schema inspection unavailable") from exc
 
     def execute_readonly_query(
         self,
@@ -217,7 +264,14 @@ class PostgresHelper:
         safe_limit = max(1, min(int(limit), 200))
         engine = self.get_engine()
         with engine.connect() as conn:
-            result = conn.execute(text(clean_sql), params or {})
+            if engine.dialect.name == "postgresql":
+                conn.execute(text("SET TRANSACTION READ ONLY"))
+            result = conn.execute(
+                text(
+                    f"SELECT * FROM ({clean_sql}) AS bounded_result LIMIT {safe_limit}"
+                ),
+                params or {},
+            )
             keys = list(result.keys())
             rows = result.fetchmany(safe_limit)
             return [
@@ -241,7 +295,12 @@ class PostgresHelper:
         query: str,
         max_tables: int = 4,
         rows_per_table: int = 8,
+        region: str | None = None,
+        start_year: int | None = None,
+        end_year: int | None = None,
     ) -> list[dict[str, Any]]:
+        if region:
+            region = region.strip().lower().removesuffix(" oblast").strip()
         if not query or not query.strip() or max_tables <= 0:
             return []
 
@@ -250,6 +309,25 @@ class PostgresHelper:
             if not schemas:
                 return []
 
+            if region:
+                schemas = {
+                    name: cols
+                    for name, cols in schemas.items()
+                    if any(
+                        c.lower()
+                        in {"_rag_region", "region", "oblast", "location", "site"}
+                        for c in cols
+                    )
+                    or region.strip().lower() in re.split(r"[_\W]+", name.lower())
+                }
+            if start_year is not None or end_year is not None:
+                schemas = {
+                    name: cols
+                    for name, cols in schemas.items()
+                    if "year" in {c.lower() for c in cols}
+                    or {"start_year", "end_year"} <= {c.lower() for c in cols}
+                    or {"_rag_start_year", "_rag_end_year"} <= {c.lower() for c in cols}
+                }
             keywords = self._expand_keywords(query)
             scored: list[tuple[int, str]] = []
             for table_name, cols in schemas.items():
@@ -265,16 +343,26 @@ class PostgresHelper:
                     scored.append((score, table_name))
 
             scored.sort(key=lambda item: (-item[0], item[1]))
-            selected_tables = [name for _, name in scored[:max_tables]]
+            selected_tables = [name for _, name in scored[: min(max_tables, 10)]]
 
             if not selected_tables:
-                priority_hints = ("yield", "soil", "crop", "kherson", "marchfeld", "nutrient", "element")
+                priority_hints = (
+                    "yield",
+                    "soil",
+                    "crop",
+                    "kherson",
+                    "marchfeld",
+                    "nutrient",
+                    "element",
+                )
                 fallback = [
                     name
                     for name in schemas
                     if any(hint in name.lower() for hint in priority_hints)
                 ]
-                selected_tables = (fallback or list(schemas.keys()))[:max_tables]
+                selected_tables = (fallback or list(schemas.keys()))[
+                    : min(max_tables, 10)
+                ]
 
             engine = self.get_engine()
             preparer = engine.dialect.identifier_preparer
@@ -282,13 +370,61 @@ class PostgresHelper:
             safe_rows = max(1, min(int(rows_per_table), 25))
 
             with engine.connect() as conn:
+                if engine.dialect.name == "postgresql":
+                    conn.execute(text("SET TRANSACTION READ ONLY"))
                 for table_name in selected_tables:
                     quoted_table = preparer.quote_identifier(table_name)
-                    count_row = conn.execute(text(f"SELECT COUNT(*) FROM {quoted_table}")).scalar()
-                    total_rows = int(count_row or 0)
+                    columns = {name.lower(): name for name in schemas[table_name]}
+                    conditions = []
+                    params: dict[str, Any] = {"limit": safe_rows}
+                    if region:
+                        column = next(
+                            (
+                                columns[c]
+                                for c in (
+                                    "region",
+                                    "oblast",
+                                    "location",
+                                    "site",
+                                    "_rag_region",
+                                )
+                                if c in columns
+                            ),
+                            None,
+                        )
+                        if column:
+                            conditions.append(
+                                f"LOWER(CAST({preparer.quote_identifier(column)} AS TEXT)) = :region"
+                            )
+                            params["region"] = region.strip().lower()
+                        elif region.strip().lower() not in re.split(
+                            r"[_\W]+", table_name.lower()
+                        ):
+                            continue
+                    if start_year is not None or end_year is not None:
+                        year = columns.get("year")
+                        first = columns.get(
+                            "start_year", year or columns.get("_rag_start_year")
+                        )
+                        last = columns.get(
+                            "end_year", year or columns.get("_rag_end_year")
+                        )
+                        if not first or not last:
+                            continue
+                        if start_year is not None:
+                            conditions.append(
+                                f"{preparer.quote_identifier(last)} >= :start_year"
+                            )
+                            params["start_year"] = start_year
+                        if end_year is not None:
+                            conditions.append(
+                                f"{preparer.quote_identifier(first)} <= :end_year"
+                            )
+                            params["end_year"] = end_year
+                    where = " WHERE " + " AND ".join(conditions) if conditions else ""
                     res = conn.execute(
-                        text(f"SELECT * FROM {quoted_table} LIMIT :limit"),
-                        {"limit": safe_rows},
+                        text(f"SELECT * FROM {quoted_table}{where} LIMIT :limit"),
+                        params,
                     )
                     keys = list(res.keys())
                     fetched = res.fetchall()
@@ -296,18 +432,21 @@ class PostgresHelper:
                         {col: _serialize_value(val) for col, val in zip(keys, row)}
                         for row in fetched
                     ]
+                    if not sample_rows:
+                        continue
                     results.append(
                         {
                             "table": table_name,
                             "columns": schemas.get(table_name, keys),
-                            "row_count": total_rows,
+                            "row_count": len(sample_rows),
+                            "row_count_is_sample": True,
                             "sample_rows": sample_rows,
                         }
                     )
             return results
         except (SQLAlchemyError, OSError) as exc:
             logger.warning("PostgreSQL query_relevant_sql_data failed: %s", exc)
-            return []
+            raise RuntimeError("SQL retrieval unavailable") from exc
 
 
 _default_db = PostgresHelper()
@@ -341,8 +480,16 @@ def query_relevant_sql_data(
     query: str,
     max_tables: int = 4,
     rows_per_table: int = 8,
+    region: str | None = None,
+    start_year: int | None = None,
+    end_year: int | None = None,
 ) -> list[dict[str, Any]]:
     """Find and sample relevant crop/soil PostgreSQL tables for a natural-language query."""
     return _default_db.query_relevant_sql_data(
-        query, max_tables=max_tables, rows_per_table=rows_per_table
+        query,
+        max_tables=max_tables,
+        rows_per_table=rows_per_table,
+        region=region,
+        start_year=start_year,
+        end_year=end_year,
     )

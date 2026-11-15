@@ -10,3 +10,9 @@ __pycache__/
 data/
 *.sqlite*
 frontend/dist/
+
+.runtime/
+
+RAG/ingestion.log
+
+RAG/rag/data/

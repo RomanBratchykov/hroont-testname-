@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from qdrant_client import QdrantClient
+from qdrant_client import QdrantClient, models
 from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,10 @@ DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
 
 def get_qdrant_url() -> str:
-    return os.getenv("QDRANT_URL", "http://localhost:6333").strip() or "http://localhost:6333"
+    return (
+        os.getenv("QDRANT_URL", "http://localhost:6333").strip()
+        or "http://localhost:6333"
+    )
 
 
 def get_collection_name() -> str:
@@ -36,7 +39,10 @@ def get_collection_name() -> str:
 
 
 def get_embedding_model_name() -> str:
-    return os.getenv("EMBEDDING_MODEL_NAME", DEFAULT_EMBEDDING_MODEL).strip() or DEFAULT_EMBEDDING_MODEL
+    return (
+        os.getenv("EMBEDDING_MODEL_NAME", DEFAULT_EMBEDDING_MODEL).strip()
+        or DEFAULT_EMBEDDING_MODEL
+    )
 
 
 class QdrantRetriever:
@@ -76,8 +82,12 @@ class QdrantRetriever:
     def get_model(self) -> SentenceTransformer:
         with self._lock:
             if self._model is None:
-                logger.info("Loading embedding model '%s'...", self.embedding_model_name)
-                self._model = SentenceTransformer(self.embedding_model_name)
+                logger.info(
+                    "Loading embedding model '%s'...", self.embedding_model_name
+                )
+                self._model = SentenceTransformer(
+                    self.embedding_model_name, device="cpu"
+                )
             return self._model
 
     def check_status(self) -> dict[str, Any]:
@@ -89,8 +99,26 @@ class QdrantRetriever:
             if exists:
                 info = client.get_collection(collection)
                 points_count = int(getattr(info, "points_count", 0) or 0)
+                if hasattr(client, "count"):
+                    points_count = int(
+                        client.count(
+                            collection_name=collection,
+                            count_filter=models.Filter(
+                                must_not=[
+                                    models.FieldCondition(
+                                        key="ingestion_marker",
+                                        match=models.MatchValue(value=True),
+                                    )
+                                ]
+                            ),
+                            exact=True,
+                        ).count
+                    )
             return {
                 "connected": True,
+                "state": "missing"
+                if not exists
+                else ("ready" if points_count else "empty"),
                 "url": self.qdrant_url,
                 "collection": collection,
                 "exists": exists,
@@ -100,6 +128,7 @@ class QdrantRetriever:
             logger.warning("Qdrant health check failed (%s): %s", self.qdrant_url, exc)
             return {
                 "connected": False,
+                "state": "unavailable",
                 "url": self.qdrant_url,
                 "collection": collection,
                 "exists": False,
@@ -112,7 +141,12 @@ class QdrantRetriever:
         query: str,
         top_k: int = 5,
         source_filter: str | None = None,
+        region: str | None = None,
+        start_year: int | None = None,
+        end_year: int | None = None,
     ) -> list[dict[str, Any]]:
+        if region:
+            region = region.strip().lower().removesuffix(" oblast").strip()
         if not query or not query.strip() or top_k <= 0:
             return []
 
@@ -125,17 +159,44 @@ class QdrantRetriever:
 
             model = self.get_model()
             vector = model.encode(query.strip(), show_progress_bar=False)
-            query_vector = vector.tolist() if hasattr(vector, "tolist") else list(vector)
+            query_vector = (
+                vector.tolist() if hasattr(vector, "tolist") else list(vector)
+            )
 
             # Over-fetch when post-filtering by source_file substring.
             fetch_limit = min(max(top_k * 4, top_k), 50) if source_filter else top_k
 
+            conditions = []
+            if region:
+                conditions.append(
+                    models.FieldCondition(
+                        key="region",
+                        match=models.MatchValue(value=region.strip().lower()),
+                    )
+                )
+            if start_year is not None:
+                conditions.append(
+                    models.FieldCondition(
+                        key="end_year", range=models.Range(gte=start_year)
+                    )
+                )
+            if end_year is not None:
+                conditions.append(
+                    models.FieldCondition(
+                        key="start_year", range=models.Range(lte=end_year)
+                    )
+                )
+            filters = (
+                {"query_filter": models.Filter(must=conditions)} if conditions else {}
+            )
+            fetch_limit = min(fetch_limit, 50)
             if hasattr(client, "query_points"):
                 response = client.query_points(
                     collection_name=collection,
                     query=query_vector,
                     limit=fetch_limit,
                     with_payload=True,
+                    **filters,
                 )
                 hits = getattr(response, "points", response)
             else:
@@ -144,15 +205,34 @@ class QdrantRetriever:
                     query_vector=query_vector,
                     limit=fetch_limit,
                     with_payload=True,
+                    **filters,
                 )
 
             results: list[dict[str, Any]] = []
             filter_lower = source_filter.lower().strip() if source_filter else ""
             for hit in hits:
                 payload = getattr(hit, "payload", None) or {}
+                if payload.get("ingestion_marker"):
+                    continue
                 text = str(payload.get("text", "")).strip()
                 source_file = str(payload.get("source_file", "unknown"))
                 if filter_lower and filter_lower not in source_file.lower():
+                    continue
+                if (
+                    region
+                    and str(payload.get("region", "")).strip().lower()
+                    != region.strip().lower()
+                ):
+                    continue
+                if start_year is not None and (
+                    not isinstance(payload.get("end_year"), (int, float))
+                    or payload["end_year"] < start_year
+                ):
+                    continue
+                if end_year is not None and (
+                    not isinstance(payload.get("start_year"), (int, float))
+                    or payload["start_year"] > end_year
+                ):
                     continue
                 if not text:
                     continue
@@ -160,15 +240,18 @@ class QdrantRetriever:
                     {
                         "text": text,
                         "source_file": source_file,
+                        "region": payload.get("region"),
+                        "start_year": payload.get("start_year"),
+                        "end_year": payload.get("end_year"),
                         "score": float(getattr(hit, "score", 0.0) or 0.0),
                     }
                 )
                 if len(results) >= top_k:
                     break
             return results
-        except Exception as exc:  # noqa: BLE001 — return empty chunks if Qdrant or embeddings fail.
-            logger.warning("Qdrant retrieval failed for query '%s': %s", query[:80], exc)
-            return []
+        except Exception as exc:
+            logger.warning("Qdrant retrieval failed (%s)", type(exc).__name__)
+            raise RuntimeError("Vector retrieval unavailable") from exc
 
 
 _default_retriever = QdrantRetriever()
@@ -183,6 +266,16 @@ def retrieve_chunks(
     query: str,
     top_k: int = 5,
     source_filter: str | None = None,
+    region: str | None = None,
+    start_year: int | None = None,
+    end_year: int | None = None,
 ) -> list[dict[str, Any]]:
     """Retrieve top-k semantic chunks from Qdrant for the given query."""
-    return _default_retriever.retrieve_chunks(query, top_k=top_k, source_filter=source_filter)
+    return _default_retriever.retrieve_chunks(
+        query,
+        top_k=top_k,
+        source_filter=source_filter,
+        region=region,
+        start_year=start_year,
+        end_year=end_year,
+    )

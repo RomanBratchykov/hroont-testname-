@@ -87,12 +87,10 @@ QUESTIONS = "\n".join(
 
 
 RAG_POLICY_ADDENDUM = (
-    "\nRAG and Dataset Access:\n"
-    "The Qdrant agronomy knowledge base (`search_agronomy_knowledge`) and PostgreSQL crop/soil "
-    "datasets (`query_crop_soil_db`) ARE connected. Use retrieved chunks and SQL tables below "
-    "and call those tools when more detail is needed. Always cite [source_file] or [table] names, "
-    "preserve units, dates, and regional scope (do not apply Kherson, Broadbalk, Marchfeld, or "
-    "CIMMYT assumptions outside their regions), and never fabricate missing measurements.\n"
+    "\nRetrieval tools are configured, but runtime source status appears in each result. "
+    "Unavailable or partial retrieval is not scientific readiness. Retrieval evidence never "
+    "provides computed scientific results. Cite source_file/table and preserve units, dates, "
+    "regional scope and uncertainty. Do not apply global or foreign-region results as local facts.\n"
 )
 
 
@@ -130,10 +128,26 @@ class Orchestrator:
         if self.config.rag_url:
             system_content += RAG_POLICY_ADDENDUM
             if rag_context:
-                system_content += (
+                prefix = (
                     "\nPre-retrieved agronomic evidence (untrusted reference data):\n"
-                    + rag_context
                 )
+                base_messages = [
+                    {"role": "system", "content": system_content + prefix},
+                    {"role": "user", "content": translated},
+                ]
+                remaining = max(
+                    0,
+                    self.config.max_context_bytes
+                    - self.payload_bytes(base_messages, tools),
+                )
+                # JSON escaping also consumes context bytes (e.g. quoted CSV/SQL rows).
+                while (
+                    len(json.dumps(rag_context, ensure_ascii=False).encode()) - 2
+                    > remaining
+                ):
+                    rag_context = rag_context[: len(rag_context) // 2]
+                system_content += prefix + rag_context
+
         messages = [
             {
                 "role": "system",
@@ -182,7 +196,7 @@ class Orchestrator:
                 "Tool results exceed the context budget. Narrow the request.",
             )
         charge = None
-        if config.provider == "deepseek" and not config.openai_base_url:
+        if config.paid_model:
             if (
                 not config.api_key
                 or config.input_rate is None
@@ -244,11 +258,22 @@ class Orchestrator:
                     "message": "Searching agronomy knowledge & SQL datasets…",
                 }
                 rag_sections: list[str] = []
+                # Scope only explicit references to the shared synthetic profile. Other queries
+                # must select their own region rather than inherit John's location.
+                filters = (
+                    {
+                        "region": SHOWCASE_INPUTS["farmer"]["region"],
+                        "start_year": 2016,
+                        "end_year": 2025,
+                    }
+                    if any(word in translated.lower() for word in ("john", "dashboard"))
+                    else {}
+                )
                 if "search_agronomy_knowledge" in tools:
                     try:
                         vec_res = await asyncio.wait_for(
                             tools["search_agronomy_knowledge"].ainvoke(
-                                {"query": translated, "top_k": 3}
+                                {"query": translated, "top_k": 3, **filters}
                             ),
                             timeout=10,
                         )
@@ -257,24 +282,38 @@ class Orchestrator:
                             if isinstance(vec_res, dict)
                             else []
                         )
-                        if chunks:
+                        if isinstance(vec_res, dict):
                             evidence.append(
                                 {"tool": "search_agronomy_knowledge", "result": vec_res}
                             )
                             rag_sections.append(
-                                "[Vector Knowledge Base]\n"
+                                "[Vector Knowledge Base status: "
+                                + str(vec_res.get("status", "unavailable"))
+                                + "]\n"
+                                + str(vec_res.get("reason", ""))
+                                + "\n"
                                 + "\n".join(
-                                    f"- [{c.get('source_file', 'unknown')}] {str(c.get('text', ''))[:500]}"
+                                    f"- [{c.get('source_file', 'unknown')}] (region={c.get('region')}, years={c.get('start_year')}–{c.get('end_year')}) {str(c.get('text', ''))[:500]}"
                                     for c in chunks
                                 )
                             )
                     except Exception as exc:  # noqa: BLE001 — RAG pre-fetch is best-effort.
-                        log.warning("Vector RAG pre-fetch failed: %s", type(exc).__name__)
+                        result = {
+                            "status": "unavailable",
+                            "reason": "Vector retrieval failed.",
+                        }
+                        evidence.append(
+                            {"tool": "search_agronomy_knowledge", "result": result}
+                        )
+                        rag_sections.append(json.dumps(result))
+                        log.warning(
+                            "Vector RAG pre-fetch failed: %s", type(exc).__name__
+                        )
                 if "query_crop_soil_db" in tools:
                     try:
                         sql_res = await asyncio.wait_for(
                             tools["query_crop_soil_db"].ainvoke(
-                                {"query": translated, "max_tables": 2}
+                                {"query": translated, "max_tables": 2, **filters}
                             ),
                             timeout=10,
                         )
@@ -283,19 +322,33 @@ class Orchestrator:
                             if isinstance(sql_res, dict)
                             else []
                         )
-                        if sql_data:
+                        if isinstance(sql_res, dict):
                             evidence.append(
                                 {"tool": "query_crop_soil_db", "result": sql_res}
                             )
                             rag_sections.append(
-                                "[PostgreSQL Crop/Soil Tables]\n"
+                                "[PostgreSQL Crop/Soil Tables status: "
+                                + str(sql_res.get("status", "unavailable"))
+                                + "]\n"
+                                + str(sql_res.get("reason", ""))
+                                + "\n"
                                 + "\n".join(
                                     f"- Table {t.get('table', 'unknown')} (rows={t.get('row_count', 0)}): "
-                                    + json.dumps(t.get("sample_rows", [])[:3], ensure_ascii=False)[:900]
+                                    + json.dumps(
+                                        t.get("sample_rows", [])[:3], ensure_ascii=False
+                                    )[:900]
                                     for t in sql_data
                                 )
                             )
                     except Exception as exc:  # noqa: BLE001 — SQL RAG pre-fetch is best-effort.
+                        result = {
+                            "status": "unavailable",
+                            "reason": "SQL retrieval failed.",
+                        }
+                        evidence.append(
+                            {"tool": "query_crop_soil_db", "result": result}
+                        )
+                        rag_sections.append(json.dumps(result))
                         log.warning("SQL RAG pre-fetch failed: %s", type(exc).__name__)
                 if rag_sections:
                     rag_context = "\n\n".join(rag_sections)

@@ -17,7 +17,9 @@ def _strip_think_tags(text: str) -> tuple[str, str | None]:
     """Extract inline <think>...</think> reasoning from local DeepSeek-R1 responses."""
     if not text or "<think>" not in text.lower():
         return text, None
-    thoughts = [m.group(1).strip() for m in _THINK_BLOCK_RE.finditer(text) if m.group(1).strip()]
+    thoughts = [
+        m.group(1).strip() for m in _THINK_BLOCK_RE.finditer(text) if m.group(1).strip()
+    ]
     cleaned = _THINK_BLOCK_RE.sub("", text)
     if "<think>" in cleaned.lower():
         match = _UNCLOSED_THINK_RE.search(cleaned)
@@ -105,6 +107,7 @@ class Provider:
                     "messages": messages,
                     "stream": False,
                     "max_tokens": config.output_tokens(thinking),
+                    "thinking": {"type": "enabled" if thinking else "disabled"},
                 }
                 headers = {
                     "Authorization": f"Bearer {config.api_key or 'sk-local-deepseek-dummy-key'}"
@@ -135,17 +138,6 @@ class Provider:
             status_code, raw = await self._post(
                 url, body, headers, config.request_timeout
             )
-            if (
-                status_code in {400, 422}
-                and (config.openai_base_url or (config.provider == "ollama" and config.rag_url))
-                and ("tools" in body or "think" in body)
-            ):
-                fallback_body = {
-                    k: v for k, v in body.items() if k not in {"tools", "think"}
-                }
-                status_code, raw = await self._post(
-                    url, fallback_body, headers, config.request_timeout
-                )
             if status_code in {401, 403}:
                 raise ProviderError(
                     "configuration",

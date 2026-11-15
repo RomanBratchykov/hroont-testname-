@@ -10,12 +10,11 @@ import sys
 import time
 import venv
 from pathlib import Path
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 VENV_DIR = ROOT / ".venv"
-PYTHON = (
-    VENV_DIR / "Scripts/python.exe" if os.name == "nt" else VENV_DIR / "bin/python"
-)
+PYTHON = VENV_DIR / "Scripts/python.exe" if os.name == "nt" else VENV_DIR / "bin/python"
 
 
 def _npm_cmd() -> str | None:
@@ -54,7 +53,9 @@ def environment() -> dict[str, str]:
                 continue
             key, separator, value = line.partition("=")
             if not separator or not key.strip().replace("_", "").isalnum():
-                raise SystemExit(f"Invalid .env assignment in {path.name} on line {number}.")
+                raise SystemExit(
+                    f"Invalid .env assignment in {path.name} on line {number}."
+                )
             value = value.strip()
             if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
                 value = value[1:-1]
@@ -77,6 +78,19 @@ def setup() -> None:
         raise SystemExit(
             "The .venv has no pip. Install python3-venv and run python -m ensurepip, then rerun --setup."
         )
+    subprocess.run(
+        [
+            str(PYTHON),
+            "-m",
+            "pip",
+            "install",
+            "torch",
+            "--index-url",
+            "https://download.pytorch.org/whl/cpu",
+        ],
+        check=True,
+        cwd=ROOT,
+    )
     pip_args = [
         str(PYTHON),
         "-m",
@@ -101,10 +115,23 @@ def _prepare_rag_services(env: dict[str, str], force_ingest: bool) -> bool:
     """Start Docker Postgres/Qdrant if available and ingest datasets if DBs are empty."""
     compose_file = ROOT / "RAG/docker-compose.yml"
     docker = _docker_cmd()
-    pg_host = env.get("POSTGRES_HOST", "localhost")
-    pg_port = int(env.get("POSTGRES_PORT", "5432"))
-    qd_host = env.get("QDRANT_HOST", "localhost")
-    qd_port = int(env.get("QDRANT_PORT", "6333"))
+    pg_url = urlparse(
+        env.get("DATABASE_URL", "postgresql://localhost:5432/kherson_crop_db")
+    )
+    qd_url = urlparse(env.get("QDRANT_URL", "http://localhost:6333"))
+    pg_host, pg_port = pg_url.hostname or "localhost", pg_url.port or 5432
+    qd_host, qd_port = qd_url.hostname or "localhost", qd_url.port or 6333
+    if pg_url.scheme not in {
+        "postgresql",
+        "postgresql+psycopg2",
+    } or qd_url.scheme not in {"http", "https"}:
+        raise ValueError("Invalid RAG database URL scheme")
+    if any(
+        host not in {"localhost", "127.0.0.1", "::1"} for host in (pg_host, qd_host)
+    ):
+        raise ValueError("Launcher requires localhost RAG stores")
+    env["POSTGRES_PORT"] = str(pg_port)
+    env["QDRANT_PORT"] = str(qd_port)
 
     if docker and compose_file.exists():
         print("Ensuring PostgreSQL and Qdrant containers are running...", flush=True)
@@ -125,20 +152,38 @@ def _prepare_rag_services(env: dict[str, str], force_ingest: bool) -> bool:
 
     pg_ready = _port_open(pg_host, pg_port)
     qd_ready = _port_open(qd_host, qd_port)
-    if pg_ready or qd_ready:
-        ingest_script = ROOT / "RAG/scripts/ingest_data.py"
-        if ingest_script.exists():
-            cmd = [str(PYTHON), str(ingest_script)]
-            if not force_ingest:
-                cmd.append("--if-empty")
-            print("Checking RAG dataset ingestion status...", flush=True)
-            subprocess.run(cmd, cwd=ROOT, env=env, check=False)
-    else:
+    if not (pg_ready and qd_ready):
         print(
-            "Warning: PostgreSQL (5432) and Qdrant (6333) are not reachable; RAG will start in degraded mode.",
+            f"RAG stores unavailable: PostgreSQL {pg_host}:{pg_port} ready={pg_ready}; Qdrant {qd_host}:{qd_port} ready={qd_ready}.",
             flush=True,
         )
-    return pg_ready or qd_ready
+    if force_ingest:
+        if not (pg_ready and qd_ready):
+            print(
+                "Ingestion not started because both stores must be reachable. Main app remains available.",
+                flush=True,
+            )
+        else:
+            log_path = ROOT / "RAG/ingestion.log"
+            with log_path.open("a") as log:
+                subprocess.Popen(
+                    [str(PYTHON), str(ROOT / "RAG/scripts/ingest_data.py")],
+                    cwd=ROOT,
+                    env=env,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=os.name != "nt",
+                )
+            print(
+                f"Indexing started independently; progress/errors: {log_path}",
+                flush=True,
+            )
+    else:
+        print(
+            "Indexing is explicit: run ./run.sh --ingest or python RAG/scripts/ingest_data.py.",
+            flush=True,
+        )
+    return pg_ready and qd_ready
 
 
 def main() -> int:
@@ -166,7 +211,7 @@ def main() -> int:
     parser.add_argument(
         "--ingest",
         action="store_true",
-        help="Force running RAG/scripts/ingest_data.py before starting.",
+        help="Start resumable ingestion independently; logs in RAG/ingestion.log.",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
@@ -214,6 +259,11 @@ def main() -> int:
     rag_port = int(env.get("RAG_PORT", str(args.rag_port)))
     if args.rag_port != 8001:
         rag_port = args.rag_port
+
+    if not 1024 <= rag_port <= 65535 or rag_port == args.port:
+        parser.error(
+            "Configured RAG_PORT must be between 1024 and 65535 and differ from --port"
+        )
 
     offline_test = args.model == "offline-test"
     start_rag = (
@@ -264,7 +314,15 @@ def main() -> int:
             )
 
     if start_rag:
-        _prepare_rag_services(env, force_ingest=args.ingest)
+        try:
+            _prepare_rag_services(env, force_ingest=args.ingest)
+        except (ValueError, OSError) as exc:
+            print(
+                f"RAG startup configuration failed: {exc}. Main app remains available.",
+                flush=True,
+            )
+            start_rag = False
+            env.pop("RAG_URL", None)
 
     if not (args.frontend_only or args.backend_only or args.dev):
         assert npm is not None
@@ -273,6 +331,7 @@ def main() -> int:
         )
 
     processes: list[subprocess.Popen] = []
+    rag_process = None
 
     def start(command: list[str], directory: Path) -> None:
         kwargs: dict = {"cwd": directory, "env": env}
@@ -298,6 +357,8 @@ def main() -> int:
                 ],
                 ROOT,
             )
+        if start_rag:
+            rag_process = processes.pop()
         if not args.frontend_only:
             start(
                 [
@@ -337,11 +398,17 @@ def main() -> int:
         )
         if start_rag:
             print(
-                f"RAG API running at http://127.0.0.1:{rag_port}",
+                f"RAG API starting at http://127.0.0.1:{rag_port}; readiness is reported by /health",
                 flush=True,
             )
         print(f"Open {address} — Ctrl+C stops the app.", flush=True)
         while all(process.poll() is None for process in processes):
+            if rag_process is not None and rag_process.poll() is not None:
+                print(
+                    f"RAG API unavailable (exit {rag_process.returncode}); main app remains running.",
+                    flush=True,
+                )
+                rag_process = None
             time.sleep(0.2)
         return next(
             (
@@ -354,6 +421,8 @@ def main() -> int:
     except KeyboardInterrupt:
         return 0
     finally:
+        if rag_process is not None:
+            processes.append(rag_process)
         for process in processes:
             if process.poll() is None:
                 if os.name == "nt" or not hasattr(os, "killpg"):

@@ -1,5 +1,6 @@
 """Server-owned LangChain tools. Future scientific tools must be registered here."""
 
+import asyncio
 import json
 import logging
 
@@ -23,13 +24,19 @@ class NoArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class KnowledgeSearchArgs(BaseModel):
+class SourceFilters(BaseModel):
+    region: str | None = Field(default=None, min_length=1, max_length=100)
+    start_year: int | None = Field(default=None, ge=1800, le=2100)
+    end_year: int | None = Field(default=None, ge=1800, le=2100)
+
+
+class KnowledgeSearchArgs(SourceFilters):
     model_config = ConfigDict(extra="forbid")
     query: str = Field(min_length=1, max_length=2000)
     top_k: int = Field(default=5, ge=1, le=10)
 
 
-class SqlQueryArgs(BaseModel):
+class SqlQueryArgs(SourceFilters):
     model_config = ConfigDict(extra="forbid")
     query: str = Field(min_length=1, max_length=2000)
     max_tables: int = Field(default=3, ge=1, le=6)
@@ -51,6 +58,11 @@ def _bound_rag_payload(payload: dict, max_bytes: int = 13500) -> dict:
                     "source_file": str(item.get("source_file", "unknown")),
                     "score": round(float(item.get("score", 0.0)), 4),
                     "text": text,
+                    **{
+                        key: item[key]
+                        for key in ("region", "start_year", "end_year")
+                        if key in item
+                    },
                 }
             )
         payload["chunks"] = trimmed_chunks
@@ -88,47 +100,87 @@ def _bound_rag_payload(payload: dict, max_bytes: int = 13500) -> dict:
     return payload
 
 
+def _unavailable(reason: str) -> dict:
+    return {
+        "status": "unavailable",
+        "reason": reason,
+        "chunks": [],
+        "sql_data": [],
+        "sources": {
+            "vector": {"status": "unavailable"},
+            "sql": {"status": "unavailable"},
+        },
+    }
+
+
+def rag_health(rag_url: str) -> dict:
+    if not rag_url:
+        return _unavailable("RAG is not configured.")
+    try:
+        if rag_url == "direct":
+            from RAG.app.main import health_check
+
+            data = asyncio.run(health_check())
+        else:
+            with httpx.Client(trust_env=False, timeout=2.0) as client:
+                response = client.get(f"{rag_url.rstrip('/')}/health")
+                response.raise_for_status()
+                data = response.json()
+        if not isinstance(data, dict) or data.get("status") not in {
+            "available",
+            "partial",
+            "unavailable",
+        }:
+            return _unavailable("RAG health response is invalid.")
+        return data
+    except Exception as exc:  # noqa: BLE001 — optional retrieval must keep chat available.
+        log.warning("RAG health unavailable: %s", type(exc).__name__)
+        return _unavailable("RAG retrieval service is unavailable.")
+
+
 def _call_rag_service(
     rag_url: str,
     query: str,
     top_k: int = 5,
     include_sql: bool = True,
+    region: str | None = None,
+    start_year: int | None = None,
+    end_year: int | None = None,
 ) -> dict:
-    """Query the RAG service via HTTP or direct in-process Python modules."""
-    if rag_url != "direct":
-        try:
+    request = {
+        "query": query,
+        "top_k": top_k,
+        "include_sql": include_sql,
+        **{
+            k: v
+            for k, v in {
+                "region": region,
+                "start_year": start_year,
+                "end_year": end_year,
+            }.items()
+            if v is not None
+        },
+    }
+    try:
+        if rag_url == "direct":
+            from RAG.app.main import RetrieveRequest, retrieve_evidence
+
+            data = asyncio.run(retrieve_evidence(RetrieveRequest(**request)))
+        else:
             with httpx.Client(trust_env=False, timeout=8.0) as client:
-                response = client.post(
-                    f"{rag_url.rstrip('/')}/retrieve",
-                    json={"query": query, "top_k": top_k, "include_sql": include_sql},
-                )
+                response = client.post(f"{rag_url.rstrip('/')}/retrieve", json=request)
                 response.raise_for_status()
                 data = response.json()
-                if isinstance(data, dict):
-                    return _bound_rag_payload(data)
-        except (httpx.HTTPError, ValueError, OSError) as exc:
-            log.warning("HTTP RAG call to %s failed, trying direct import: %s", rag_url, exc)
-
-    try:
-        from RAG.app.db import query_relevant_sql_data
-        from RAG.app.qdrant_service import retrieve_chunks
-
-        chunks = retrieve_chunks(query, top_k=top_k) if top_k > 0 else []
-        sql_data = query_relevant_sql_data(query) if include_sql else []
-        return _bound_rag_payload(
-            {
-                "status": "available",
-                "query": query,
-                "chunks": chunks,
-                "sql_data": sql_data,
-            }
-        )
-    except Exception as exc:  # noqa: BLE001 — keep chat available when RAG backends are offline.
-        log.warning("Direct RAG retrieval failed: %s", exc)
-        return {
-            "status": "unavailable",
-            "reason": "RAG retrieval service is unavailable.",
-        }
+        if (
+            not isinstance(data, dict)
+            or data.get("status") not in {"available", "partial", "unavailable"}
+            or not isinstance(data.get("sources"), dict)
+        ):
+            return _unavailable("RAG retrieval response is invalid.")
+        return _bound_rag_payload(data)
+    except Exception as exc:  # noqa: BLE001 — optional retrieval must keep chat available.
+        log.warning("RAG retrieval unavailable: %s", type(exc).__name__)
+        return _unavailable("RAG retrieval service is unavailable.")
 
 
 def build_tools(store: Store, config: Settings | None = None):
@@ -159,36 +211,15 @@ def build_tools(store: Store, config: Settings | None = None):
             }
 
         def get_capabilities() -> dict:
-            if rag_enabled:
-                return {
-                    "status": "available",
-                    "scientific_analysis": "available",
-                    "datasets": ["agronomy_knowledge", "kherson_crop_db"],
-                    "scientific_tools": [
-                        "search_agronomy_knowledge",
-                        "query_crop_soil_db",
-                    ],
-                    "reason": "Connected to Qdrant agronomy vector store and PostgreSQL crop/soil database.",
-                    "available": [
-                        "farmer interview",
-                        "conversation history",
-                        "agronomy knowledge vector retrieval",
-                        "crop and soil SQL dataset retrieval",
-                    ],
-                    "recommendations": "rag_assisted",
-                }
+            state = rag_health(config.rag_url if config else "")
             return {
                 "status": "available",
                 "scientific_analysis": "unavailable",
+                "retrieval": state,
                 "datasets": [],
                 "scientific_tools": [],
-                "reason": "Scientific scripts and datasets will be added later. No NASA data has been fetched.",
-                "available": [
-                    "farmer interview",
-                    "conversation history",
-                    "saved demonstration dashboard",
-                ],
-                "demo_dashboard": "John’s synthetic Kherson profile and example rotations are in the supplied system context; no scientific results have been computed.",
+                "reason": "Retrieval supplies reference evidence; scientific calculations are not connected.",
+                "available": ["farmer interview", "conversation history"],
                 "recommendations": "deferred",
             }
 
@@ -209,28 +240,45 @@ def build_tools(store: Store, config: Settings | None = None):
 
         if rag_enabled and config is not None:
 
-            def search_agronomy_knowledge(query: str, top_k: int = 5) -> dict:
+            def search_agronomy_knowledge(
+                query: str,
+                top_k: int = 5,
+                region: str | None = None,
+                start_year: int | None = None,
+                end_year: int | None = None,
+            ) -> dict:
                 res = _call_rag_service(
-                    config.rag_url, query=query, top_k=top_k, include_sql=False
+                    config.rag_url,
+                    query=query,
+                    top_k=top_k,
+                    include_sql=False,
+                    region=region,
+                    start_year=start_year,
+                    end_year=end_year,
                 )
-                return {
-                    "status": res.get("status", "available"),
-                    "chunks": res.get("chunks", []),
-                }
+                return res
 
-            def query_crop_soil_db(query: str, max_tables: int = 3) -> dict:
+            def query_crop_soil_db(
+                query: str,
+                max_tables: int = 3,
+                region: str | None = None,
+                start_year: int | None = None,
+                end_year: int | None = None,
+            ) -> dict:
                 res = _call_rag_service(
-                    config.rag_url, query=query, top_k=0, include_sql=True
+                    config.rag_url,
+                    query=query,
+                    top_k=0,
+                    include_sql=True,
+                    region=region,
+                    start_year=start_year,
+                    end_year=end_year,
                 )
                 sql_data = res.get("sql_data", [])
                 if isinstance(sql_data, list):
                     sql_data = sql_data[:max_tables]
-                return _bound_rag_payload(
-                    {
-                        "status": res.get("status", "available"),
-                        "sql_data": sql_data,
-                    }
-                )
+                res["sql_data"] = sql_data
+                return _bound_rag_payload(res)
 
             tool_list.extend(
                 [

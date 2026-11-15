@@ -70,14 +70,14 @@ class Settings(BaseModel):
             rag = urlsplit(self.rag_url)
             if (
                 rag.scheme not in {"http", "https"}
-                or not rag.hostname
+                or rag.hostname not in {"localhost", "127.0.0.1", "::1"}
                 or rag.username
                 or rag.password
                 or rag.query
                 or rag.fragment
             ):
                 raise ValueError(
-                    "RAG_URL must be 'direct' or a valid HTTP(S) URL without credentials."
+                    "RAG_URL must be 'direct' or a local HTTP(S) URL without credentials."
                 )
         if self.openai_base_url:
             base = urlsplit(self.openai_base_url)
@@ -93,6 +93,16 @@ class Settings(BaseModel):
                     "OPENAI_BASE_URL must be a valid HTTP(S) URL without credentials."
                 )
         return self
+
+    @property
+    def paid_model(self) -> bool:
+        from urllib.parse import urlsplit
+
+        return self.provider == "deepseek" and (
+            not self.openai_base_url
+            or urlsplit(self.openai_base_url).hostname
+            not in {"localhost", "127.0.0.1", "::1"}
+        )
 
     @property
     def model_name(self):

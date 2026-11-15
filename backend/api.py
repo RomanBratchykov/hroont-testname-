@@ -22,7 +22,7 @@ from backend.documents import Attachment, extract
 from backend.orchestrator import Orchestrator
 from backend.providers import Provider
 from backend.store import Conflict, SessionCapacity, Store
-from backend.tools import build_tools
+from backend.tools import build_tools, rag_health
 
 log = logging.getLogger(__name__)
 
@@ -161,6 +161,7 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
 
     @app.get("/api/health")
     async def health():
+        retrieval = await asyncio.to_thread(rag_health, config.rag_url)
         return {
             "status": "ok",
             "provider": config.provider,
@@ -175,11 +176,11 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
                 "limit_usd": float(config.phase_budget),
             },
             "configured": config.provider == "ollama"
-            or bool(config.openai_base_url)
+            or (not config.paid_model)
             or bool(config.api_key and config.input_rate and config.output_rate),
-            "scientific_tools": ["search_agronomy_knowledge", "query_crop_soil_db"]
-            if config.rag_url
-            else [],
+            "scientific_tools": [],
+            "scientific_analysis": "unavailable",
+            "retrieval": retrieval,
             "rag_configured": bool(config.rag_url),
             "translation_configured": bool(config.translation_url),
         }

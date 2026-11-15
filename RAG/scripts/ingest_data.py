@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
 import re
+import shutil
+import stat
 import uuid
 import zipfile
 from pathlib import Path
@@ -20,7 +23,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 from sentence_transformers import SentenceTransformer
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -35,7 +38,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DATA_DIR = PROJECT_ROOT / "data"
+DATA_DIR = Path(os.getenv("RAG_DATA_DIR", str(PROJECT_ROOT / "rag" / "data")))
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -66,45 +69,102 @@ def _long_path(path: Path) -> Path:
 
 
 def extract_all_zips(data_dir: Path = DATA_DIR) -> None:
-    """Recursively extract all .zip archives under data_dir into sibling folders."""
-    logger.info("Step 0: Scanning '%s' for zip archives...", data_dir)
-    if not data_dir.exists():
-        logger.warning("Data directory '%s' does not exist. Skipping zip extraction.", data_dir)
-        return
-
-    processed_zips: set[Path] = set()
-    extracted_count = 0
-
-    while True:
-        zip_files = sorted(
-            p for p in data_dir.rglob("*") if p.is_file() and p.suffix.lower() == ".zip"
+    """Extract nested ZIPs with traversal, symlink, size and nesting limits."""
+    if not data_dir.is_dir():
+        raise ValueError(f"Data directory does not exist: {data_dir}")
+    processed: set[Path] = set()
+    total_bytes = 0
+    total_members = 0
+    for depth in range(9):
+        archives = sorted(
+            p
+            for p in data_dir.rglob("*")
+            if p.suffix.lower() == ".zip" and p not in processed
         )
-        new_zips = [p for p in zip_files if p.resolve() not in processed_zips]
-        if not new_zips:
-            break
+        if not archives:
+            return
+        if depth == 8:
+            raise ValueError("ZIP nesting exceeds eight levels")
+        for archive in archives:
+            processed.add(archive)
+            target = archive.with_suffix("").resolve()
+            if not target.is_relative_to(data_dir.resolve()):
+                raise ValueError("Archive extraction target escapes data directory")
+            with zipfile.ZipFile(archive) as zipped:
+                members = zipped.infolist()
+                for member in members:
+                    destination = (target / member.filename).resolve()
+                    if (
+                        not destination.is_relative_to(target)
+                        or "\\" in member.filename
+                        or stat.S_ISLNK(member.external_attr >> 16)
+                    ):
+                        raise ValueError(f"Unsafe ZIP member: {member.filename}")
+                    total_bytes += member.file_size
+                    total_members += 1
+                    if (
+                        member.file_size > 512 * 1024**2
+                        or total_bytes > 4 * 1024**3
+                        or total_members > 50000
+                    ):
+                        raise ValueError("ZIP extraction resource limit exceeded")
+                for member in members:
+                    destination = target / member.filename
+                    if member.is_dir():
+                        destination.mkdir(parents=True, exist_ok=True)
+                        continue
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    # Existing complete files are preserved across restarts.
+                    if (
+                        destination.exists()
+                        and destination.stat().st_size == member.file_size
+                    ):
+                        continue
+                    temporary = destination.with_name(destination.name + ".extracting")
+                    with zipped.open(member) as source, temporary.open("wb") as output:
+                        shutil.copyfileobj(source, output, length=1024 * 1024)
+                    temporary.replace(destination)
 
-        for zip_path in new_zips:
-            resolved_zip = zip_path.resolve()
-            processed_zips.add(resolved_zip)
-            target_dir = zip_path.with_suffix("")
-            try:
-                target_dir_long = _long_path(target_dir)
-                target_dir_long.mkdir(parents=True, exist_ok=True)
-                with zipfile.ZipFile(_long_path(zip_path), "r") as zf:
-                    zf.extractall(str(target_dir_long))
-                extracted_count += 1
-                logger.info(
-                    "Extracted '%s' -> '%s'",
-                    zip_path.relative_to(data_dir),
-                    target_dir.relative_to(data_dir),
-                )
-            except (zipfile.BadZipFile, OSError, ValueError) as exc:
-                logger.warning("Skipping corrupted or unreadable zip '%s': %s", zip_path, exc)
 
-    logger.info("Step 0 complete: Extracted %d zip archive(s).", extracted_count)
+def source_metadata(source: str) -> dict[str, Any]:
+    """Use explicit source labels only; Drive export timestamps are not coverage dates."""
+    label = re.sub(r"-\d{8}T\d{6}Z-\d+-\d+", "", source)
+    region = next(
+        (
+            name
+            for token, name in (
+                ("kherson", "Kherson"),
+                ("broadbalk", "United Kingdom"),
+                ("texcoco", "Mexico"),
+                ("marchfeld", "Austria"),
+            )
+            if token in label.lower()
+        ),
+        None,
+    )
+    match = re.search(r"(?<!\d)((?:19|20)\d{2})[-–]((?:19|20)\d{2})(?!\d)", label)
+    start, end = (int(match[1]), int(match[2])) if match else (None, None)
+    return {
+        "region": region.lower() if region else None,
+        "start_year": start,
+        "end_year": end,
+    }
 
 
-def _sanitize_identifier(raw: str, max_len: int = MAX_TABLE_NAME_LEN, prefix: str = "t_", fallback: str = "table") -> str:
+def fingerprint(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for block in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _sanitize_identifier(
+    raw: str,
+    max_len: int = MAX_TABLE_NAME_LEN,
+    prefix: str = "t_",
+    fallback: str = "table",
+) -> str:
     """Sanitize a string into a lowercase alphanumeric+underscore identifier."""
     cleaned = re.sub(r"[^a-z0-9]+", "_", raw.lower()).strip("_")
     cleaned = re.sub(r"_+", "_", cleaned)
@@ -123,11 +183,15 @@ def _build_unique_table_name(
 ) -> str:
     """Create a collision-free PostgreSQL table name (<= 60 chars)."""
     rel_path = file_path.relative_to(data_dir)
-    stem_part = _sanitize_identifier(file_path.stem, max_len=MAX_TABLE_NAME_LEN, fallback="data")
+    stem_part = _sanitize_identifier(
+        file_path.stem, max_len=MAX_TABLE_NAME_LEN, fallback="data"
+    )
 
     parts: list[str] = []
     if rel_path.parent != Path("."):
-        parent_part = _sanitize_identifier(rel_path.parent.name, max_len=24, fallback="")
+        parent_part = _sanitize_identifier(
+            rel_path.parent.name, max_len=24, fallback=""
+        )
         if parent_part and parent_part != stem_part:
             parts.append(parent_part)
     parts.append(stem_part)
@@ -136,7 +200,9 @@ def _build_unique_table_name(
         sheet_part = _sanitize_identifier(sheet_name, max_len=20, fallback="sheet")
         parts.append(sheet_part)
 
-    base = _sanitize_identifier("_".join(parts), max_len=MAX_TABLE_NAME_LEN, fallback="table")
+    base = _sanitize_identifier(
+        "_".join(parts), max_len=MAX_TABLE_NAME_LEN, fallback="table"
+    )
     candidate = base
     counter = 2
     while candidate in used_names:
@@ -153,7 +219,9 @@ def _sanitize_columns(columns: pd.Index) -> list[str]:
     seen: dict[str, int] = {}
     result: list[str] = []
     for idx, col in enumerate(columns):
-        base = _sanitize_identifier(str(col), max_len=63, prefix="c_", fallback=f"col_{idx}")
+        base = _sanitize_identifier(
+            str(col), max_len=63, prefix="c_", fallback=f"col_{idx}"
+        )
         count = seen.get(base, 0) + 1
         seen[base] = count
         if count > 1:
@@ -202,8 +270,7 @@ def _read_csv_flexible(file_path: Path) -> pd.DataFrame:
                 if sep is None:
                     df = pd.read_csv(
                         f,
-                        sep=None,
-                        engine="python",
+                        sep=",",
                         na_values=NA_VALUES,
                         keep_default_na=True,
                     )
@@ -224,85 +291,75 @@ def _read_csv_flexible(file_path: Path) -> pd.DataFrame:
 
 
 def ingest_sql(engine: Engine, data_dir: Path = DATA_DIR) -> None:
-    """Traverse data_dir for .csv and .xlsx files and load tables into PostgreSQL."""
-    logger.info("Step 1: Scanning '%s' for CSV and Excel files...", data_dir)
-    if not data_dir.exists():
-        logger.warning("Data directory '%s' does not exist. Skipping SQL ingestion.", data_dir)
-        return
-
-    tabular_files = sorted(
-        p
-        for p in data_dir.rglob("*")
-        if p.is_file() and p.suffix.lower() in {".csv", ".xlsx"}
-    )
-
-    used_table_names: set[str] = set()
-    tables_loaded = 0
-
-    for file_path in tabular_files:
-        rel_display = file_path.relative_to(data_dir)
-        suffix = file_path.suffix.lower()
-
-        if suffix == ".csv":
-            try:
-                df = _read_csv_flexible(file_path)
-                if len(df.columns) == 0:
-                    logger.warning("Skipping empty CSV '%s'.", rel_display)
+    """Commit each source and its manifest atomically; never replace existing tables."""
+    failures = []
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS rag_ingestion_sources (source_file TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, table_names TEXT NOT NULL, region TEXT, start_year INTEGER, end_year INTEGER)"
+            )
+        )
+    for path in sorted(data_dir.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in {".csv", ".xlsx"}:
+            continue
+        source = path.relative_to(data_dir).as_posix()
+        digest = fingerprint(path)
+        metadata = source_metadata(source)
+        try:
+            with engine.begin() as connection:
+                previous = connection.execute(
+                    text(
+                        "SELECT fingerprint FROM rag_ingestion_sources WHERE source_file=:source"
+                    ),
+                    {"source": source},
+                ).scalar()
+                if previous == digest:
                     continue
-                table_name = _build_unique_table_name(file_path, data_dir, used_table_names)
-                df.to_sql(table_name, engine, if_exists="replace", index=False, chunksize=1000)
-                tables_loaded += 1
-                logger.info("Loaded CSV '%s' -> table '%s' (%d rows).", rel_display, table_name, len(df))
-            except Exception as exc:  # noqa: BLE001 — per-file ETL recovery.
-                logger.warning("Failed to ingest CSV '%s': %s", rel_display, exc)
-
-        elif suffix == ".xlsx":
-            try:
-                with open(_long_path(file_path), "rb") as f:
-                    sheets: dict[str, pd.DataFrame] = pd.read_excel(
-                        f,
-                        sheet_name=None,
-                        na_values=NA_VALUES,
-                        keep_default_na=True,
-                        engine="openpyxl",
+                if previous:
+                    raise ValueError(
+                        "Previously ingested source changed; explicit migration required"
                     )
-            except Exception as exc:  # noqa: BLE001 — per-file ETL recovery.
-                logger.warning("Failed to open Excel workbook '%s': %s", rel_display, exc)
-                continue
-
-            multi_sheet = len(sheets) > 1
-            for sheet_name, raw_df in sheets.items():
-                try:
-                    if raw_df.empty and len(raw_df.columns) == 0:
-                        logger.warning("Skipping empty sheet '%s' in '%s'.", sheet_name, rel_display)
+                sheets = (
+                    {"data": _read_csv_flexible(path)}
+                    if path.suffix.lower() == ".csv"
+                    else pd.read_excel(
+                        path, sheet_name=None, engine="openpyxl", na_values=NA_VALUES
+                    )
+                )
+                tables = []
+                for sheet, raw in sheets.items():
+                    df = _clean_dataframe(raw)
+                    if not len(df.columns):
                         continue
-                    df = _clean_dataframe(raw_df)
-                    if len(df.columns) == 0:
-                        continue
-                    table_name = _build_unique_table_name(
-                        file_path,
-                        data_dir,
-                        used_table_names,
-                        sheet_name=sheet_name if multi_sheet else None,
+                    identity = hashlib.sha256(
+                        f"{source}::{sheet}".encode()
+                    ).hexdigest()[:16]
+                    table = (
+                        f"rag_{_sanitize_identifier(path.stem, max_len=35)}_{identity}"
                     )
-                    df.to_sql(table_name, engine, if_exists="replace", index=False, chunksize=1000)
-                    tables_loaded += 1
-                    logger.info(
-                        "Loaded Excel '%s' [sheet: %s] -> table '%s' (%d rows).",
-                        rel_display,
-                        sheet_name,
-                        table_name,
-                        len(df),
+                    for key, value in {"source_file": source, **metadata}.items():
+                        df[f"_rag_{key}"] = value
+                    df.to_sql(
+                        table, connection, if_exists="fail", index=False, chunksize=1000
                     )
-                except Exception as exc:  # noqa: BLE001 — per-sheet ETL recovery.
-                    logger.warning(
-                        "Failed to ingest sheet '%s' from '%s': %s",
-                        sheet_name,
-                        rel_display,
-                        exc,
-                    )
-
-    logger.info("Step 1 complete: Loaded %d table(s) into PostgreSQL.", tables_loaded)
+                    tables.append(table)
+                connection.execute(
+                    text(
+                        "INSERT INTO rag_ingestion_sources (source_file, fingerprint, table_names, region, start_year, end_year) VALUES (:source_file, :fingerprint, :table_names, :region, :start_year, :end_year)"
+                    ),
+                    {
+                        "source_file": source,
+                        "fingerprint": digest,
+                        "table_names": json.dumps(tables),
+                        **metadata,
+                    },
+                )
+                logger.info("Loaded %s (%d tables)", source, len(tables))
+        except Exception as exc:  # noqa: BLE001 — preserve other sources and report failed exit.
+            failures.append(source)
+            logger.error("Failed SQL source %s: %s", source, exc)
+    if failures:
+        raise RuntimeError(f"SQL ingestion failed for {len(failures)} source(s)")
 
 
 def _read_text_with_fallback(file_path: Path) -> str:
@@ -349,7 +406,12 @@ def _extract_jsonl_text(file_path: Path) -> str:
             if formatted.strip():
                 records.append(formatted)
         except json.JSONDecodeError as exc:
-            logger.warning("Skipping malformed JSON line %d in '%s': %s", line_num, file_path.name, exc)
+            logger.warning(
+                "Skipping malformed JSON line %d in '%s': %s",
+                line_num,
+                file_path.name,
+                exc,
+            )
     return "\n\n---\n\n".join(records)
 
 
@@ -376,7 +438,9 @@ def ingest_vector(qdrant_client: QdrantClient, data_dir: Path = DATA_DIR) -> Non
     """Extract text from .jsonl, .md, and .pdf files, chunk, embed, and upsert into Qdrant."""
     logger.info("Step 2: Scanning '%s' for JSONL, Markdown, and PDF files...", data_dir)
     if not data_dir.exists():
-        logger.warning("Data directory '%s' does not exist. Skipping vector ingestion.", data_dir)
+        logger.warning(
+            "Data directory '%s' does not exist. Skipping vector ingestion.", data_dir
+        )
         return
 
     if not qdrant_client.collection_exists(QDRANT_COLLECTION):
@@ -389,7 +453,7 @@ def ingest_vector(qdrant_client: QdrantClient, data_dir: Path = DATA_DIR) -> Non
         logger.info("Using existing Qdrant collection '%s'.", QDRANT_COLLECTION)
 
     logger.info("Loading embedding model '%s'...", EMBEDDING_MODEL_NAME)
-    model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+    model = SentenceTransformer(EMBEDDING_MODEL_NAME, device="cpu")
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
 
     text_files = sorted(
@@ -398,12 +462,24 @@ def ingest_vector(qdrant_client: QdrantClient, data_dir: Path = DATA_DIR) -> Non
         if p.is_file() and p.suffix.lower() in {".jsonl", ".md", ".pdf"}
     )
 
+    failures = []
     total_chunks = 0
     files_indexed = 0
 
     for file_path in text_files:
         rel_source = file_path.relative_to(data_dir).as_posix()
         suffix = file_path.suffix.lower()
+        digest = fingerprint(file_path)
+        marker_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"manifest::{rel_source}"))
+        existing = qdrant_client.retrieve(
+            collection_name=QDRANT_COLLECTION, ids=[marker_id]
+        )
+        if existing and existing[0].payload.get("fingerprint") == digest:
+            continue
+        if existing:
+            raise ValueError(
+                f"Previously indexed source changed; explicit migration required: {rel_source}"
+            )
 
         try:
             if suffix == ".jsonl":
@@ -416,6 +492,7 @@ def ingest_vector(qdrant_client: QdrantClient, data_dir: Path = DATA_DIR) -> Non
                 continue
         except Exception as exc:  # noqa: BLE001 — per-file parsing recovery.
             logger.warning("Failed to parse '%s': %s", rel_source, exc)
+            failures.append(rel_source)
             continue
 
         if not content.strip():
@@ -432,19 +509,51 @@ def ingest_vector(qdrant_client: QdrantClient, data_dir: Path = DATA_DIR) -> Non
                 embeddings = model.encode(batch_chunks, show_progress_bar=False)
                 points = [
                     PointStruct(
-                        id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{rel_source}::{start + offset}")),
+                        id=str(
+                            uuid.uuid5(
+                                uuid.NAMESPACE_URL, f"{rel_source}::{start + offset}"
+                            )
+                        ),
                         vector=embedding.tolist(),
-                        payload={"source_file": rel_source, "text": chunk},
+                        payload={
+                            "source_file": rel_source,
+                            "text": chunk,
+                            "fingerprint": digest,
+                            **source_metadata(rel_source),
+                        },
                     )
-                    for offset, (chunk, embedding) in enumerate(zip(batch_chunks, embeddings))
+                    for offset, (chunk, embedding) in enumerate(
+                        zip(batch_chunks, embeddings)
+                    )
                 ]
-                qdrant_client.upsert(collection_name=QDRANT_COLLECTION, points=points)
+                qdrant_client.upsert(
+                    collection_name=QDRANT_COLLECTION, points=points, wait=True
+                )
 
+            # Completion marker is written only after all deterministic chunks succeeded.
+            qdrant_client.upsert(
+                collection_name=QDRANT_COLLECTION,
+                points=[
+                    PointStruct(
+                        id=marker_id,
+                        vector=[0.0] * EMBEDDING_DIM,
+                        payload={
+                            "source_file": rel_source,
+                            "fingerprint": digest,
+                            "ingestion_marker": True,
+                        },
+                    )
+                ],
+                wait=True,
+            )
             files_indexed += 1
             total_chunks += len(chunks)
             logger.info("Indexed '%s' (%d chunk(s)).", rel_source, len(chunks))
         except Exception as exc:  # noqa: BLE001 — per-file embedding/upsert recovery.
-            logger.warning("Failed to embed/upsert chunks for '%s': %s", rel_source, exc)
+            failures.append(rel_source)
+            logger.warning(
+                "Failed to embed/upsert chunks for '%s': %s", rel_source, exc
+            )
 
     logger.info(
         "Step 2 complete: Indexed %d file(s) and %d chunk(s) into Qdrant collection '%s'.",
@@ -452,6 +561,9 @@ def ingest_vector(qdrant_client: QdrantClient, data_dir: Path = DATA_DIR) -> Non
         total_chunks,
         QDRANT_COLLECTION,
     )
+
+    if failures:
+        raise RuntimeError(f"Vector ingestion failed for {len(failures)} source(s)")
 
 
 def _postgres_has_tables(engine: Engine) -> bool:
@@ -475,42 +587,37 @@ def _qdrant_has_points(client: QdrantClient, collection: str) -> bool:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Ingest AgroResilience datasets into PostgreSQL and Qdrant.")
+    parser = argparse.ArgumentParser(
+        description="Ingest AgroResilience datasets into PostgreSQL and Qdrant."
+    )
+    parser.add_argument("--data-dir", type=Path, default=DATA_DIR)
     parser.add_argument(
         "--if-empty",
         action="store_true",
-        help="Only ingest PostgreSQL or Qdrant if the respective store is empty.",
+        help="Deprecated compatibility alias; always resumes individual sources.",
     )
+    parser.add_argument("--sql-only", action="store_true")
+    parser.add_argument("--vector-only", action="store_true")
     args = parser.parse_args()
-
-    logger.info("Connecting to PostgreSQL...")
-    sql_engine = create_engine(DATABASE_URL)
-    logger.info("Connecting to Qdrant at '%s'...", QDRANT_URL)
-    qdrant = QdrantClient(url=QDRANT_URL)
-
-    try:
-        need_sql = True
-        need_qdrant = True
-        if args.if_empty:
-            need_sql = not _postgres_has_tables(sql_engine)
-            need_qdrant = not _qdrant_has_points(qdrant, QDRANT_COLLECTION)
-            if not need_sql and not need_qdrant:
-                logger.info("Databases already populated; skipping ingestion.")
-                raise SystemExit(0)
-
-        logger.info("Starting ETL ingestion pipeline...")
-        extract_all_zips(DATA_DIR)
-
-        if need_sql:
-            ingest_sql(sql_engine, DATA_DIR)
-        else:
-            logger.info("PostgreSQL already has ingested tables; skipping SQL step.")
-
-        if need_qdrant:
-            ingest_vector(qdrant, DATA_DIR)
-        else:
-            logger.info("Qdrant collection '%s' already populated; skipping vector step.", QDRANT_COLLECTION)
-
-        logger.info("ETL pipeline finished.")
-    finally:
-        sql_engine.dispose()
+    if args.sql_only and args.vector_only:
+        parser.error("Choose only one store")
+    extract_all_zips(args.data_dir)
+    errors = []
+    if not args.vector_only:
+        engine = create_engine(DATABASE_URL)
+        try:
+            ingest_sql(engine, args.data_dir)
+        except Exception as exc:
+            logger.exception("SQL ingestion failed")
+            errors.append(str(exc))
+        finally:
+            engine.dispose()
+    if not args.sql_only:
+        try:
+            ingest_vector(QdrantClient(url=QDRANT_URL, timeout=60), args.data_dir)
+        except Exception as exc:
+            logger.exception("Vector ingestion failed")
+            errors.append(str(exc))
+    if errors:
+        raise SystemExit(1)
+    logger.info("ETL pipeline finished")
