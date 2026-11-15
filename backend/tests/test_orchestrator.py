@@ -117,6 +117,8 @@ def test_tools_are_bounded_and_unknown_tools_never_execute(tmp_path):
         body = json.loads(request.content)
         if count == 1:
             assert {t["function"]["name"] for t in body["tools"]} == {
+                "save_user_info",
+                "read_user_info",
                 "read_history",
                 "get_capabilities",
                 "get_climate_history",

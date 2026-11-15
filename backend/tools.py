@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import sqlite3
 from typing import Literal
 
 import httpx
@@ -12,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from backend.config import Settings
 from backend.field_data import check_sources, climate
 from backend.store import Store
+from backend.profile import ProfileUpdate
 
 log = logging.getLogger(__name__)
 
@@ -241,6 +243,27 @@ def build_tools(
     rag_enabled = bool(config and config.rag_url)
 
     def for_chat(chat: str):
+        def read_user_info() -> dict:
+            owner = store.chat_owner(chat)
+            if owner is None:
+                return {"status": "unavailable", "reason": "No account session is associated with this chat."}
+            try:
+                return {"status": "available", "profile": store.profile(owner)}
+            except sqlite3.Error:
+                return {"status": "unavailable", "reason": "Saved profile storage is unavailable. Retry later."}
+
+        def save_user_info(facts: dict[str, str] | None = None, boundary: list[list[float]] | None = None) -> dict:
+            owner = store.chat_owner(chat)
+            if owner is None:
+                return {"status": "unavailable", "reason": "No account session is associated with this chat."}
+            try:
+                profile = store.update_profile(owner, {"facts": facts or {}, "boundary": boundary})
+            except ValueError:
+                return {"status": "invalid", "reason": "Profile validation failed; no changes were saved."}
+            except sqlite3.Error:
+                return {"status": "unavailable", "reason": "Profile storage failed; saving was not confirmed. Retry later."}
+            return {"status": "saved", "profile": profile}
+
         def read_history(limit: int = 10, before: int | None = None) -> dict:
             records = store.history(chat, limit, before, for_model=True)
             messages = [
@@ -280,11 +303,19 @@ def build_tools(
                 },
                 "scientific_tools": [],
                 "reason": "Reference and historical climate retrieval do not establish agronomic feasibility; scientific calculations are not connected.",
-                "available": ["farmer interview", "conversation history"],
+                "available": ["farmer interview", "conversation history", "save_user_info", "read_user_info"],
                 "recommendations": "deferred",
             }
 
         tool_list = [
+            StructuredTool.from_function(
+                save_user_info, name="save_user_info", args_schema=ProfileUpdate,
+                description="Persist user-provided farmer profile facts and/or field boundary to the current private account session. Facts are short named string values; boundary is four [longitude, latitude] corners in boundary order (a repeated closing fifth point is accepted). Save only supplied facts; never guess. A saved boundary is farmer-reported, not verified. Only report success when status is saved.",
+            ),
+            StructuredTool.from_function(
+                read_user_info, name="read_user_info", args_schema=NoArgs,
+                description="Read the current account's saved farmer profile and field boundary across chats.",
+            ),
             StructuredTool.from_function(
                 read_history,
                 name="read_history",

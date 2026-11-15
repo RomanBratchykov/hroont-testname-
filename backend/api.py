@@ -22,6 +22,7 @@ from backend.documents import Attachment, extract
 from backend.field_data import check_sources, climate
 from backend.orchestrator import Orchestrator
 from backend.providers import Provider
+from backend.profile import ProfileUpdate
 from backend.store import Conflict, SessionCapacity, Store
 from backend.tools import build_tools, rag_health
 
@@ -30,7 +31,7 @@ log = logging.getLogger(__name__)
 
 class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    action: Literal["send", "list", "read", "rename", "delete", "clear"] = "send"
+    action: Literal["send", "list", "read", "rename", "delete", "clear", "profile", "save_profile"] = "send"
     conversation_id: str = Field(
         default="", max_length=100, pattern=r"^[A-Za-z0-9_-]*$"
     )
@@ -39,6 +40,7 @@ class ChatRequest(BaseModel):
     mode: Literal["auto", "fast", "thinking"] = "auto"
     title: str = Field(default="", max_length=100)
     files: list[Attachment] = Field(default_factory=list, max_length=3)
+    profile: ProfileUpdate | None = None
 
     @model_validator(mode="after")
     def required_fields(self):
@@ -220,6 +222,15 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
     async def chat(payload: ChatRequest, request: Request):
         store.expire()
         owner = request.state.owner
+        if payload.action == "profile":
+            return store.profile(owner)
+        if payload.action == "save_profile":
+            if payload.profile is None:
+                raise HTTPException(422, "Provide profile facts or a field boundary.")
+            try:
+                return store.update_profile(owner, payload.profile.model_dump())
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from exc
         if payload.action == "list":
             return {"conversations": store.list_chats(owner)}
         if payload.conversation_id:

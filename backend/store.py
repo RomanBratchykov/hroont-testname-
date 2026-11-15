@@ -57,6 +57,9 @@ class Store:
                 CREATE TABLE IF NOT EXISTS spending (
                     id TEXT PRIMARY KEY, phase TEXT NOT NULL, reserved INTEGER NOT NULL,
                     spent INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS user_profiles (
+                    owner TEXT PRIMARY KEY REFERENCES guest_sessions(id),
+                    data TEXT NOT NULL, updated_at REAL NOT NULL);
             """)
         self.expire()
 
@@ -116,6 +119,35 @@ class Store:
                 ).fetchone()
                 is not None
             )
+
+    def chat_owner(self, chat: str) -> str | None:
+        with self.connect() as db:
+            row = db.execute("SELECT owner FROM conversation_owners WHERE conversation_id=?", (chat,)).fetchone()
+            return row[0] if row else None
+
+    def profile(self, owner: str) -> dict:
+        with self.connect() as db:
+            row = db.execute("SELECT data, updated_at FROM user_profiles WHERE owner=?", (owner,)).fetchone()
+        data = json.loads(row["data"]) if row else {"facts": {}, "boundary": None}
+        return {**data, "updated_at": row["updated_at"] if row else None,
+                "provenance": "farmer_reported", "verified": False}
+
+    def update_profile(self, owner: str, update: dict) -> dict:
+        from backend.profile import ProfileUpdate
+
+        patch = ProfileUpdate.model_validate(update)
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT data FROM user_profiles WHERE owner=?", (owner,)).fetchone()
+            data = json.loads(row[0]) if row else {"facts": {}, "boundary": None}
+            data["facts"].update(patch.facts)
+            if len(data["facts"]) > 40 or len(json.dumps(data["facts"], ensure_ascii=False).encode()) > 8000:
+                raise ValueError("Saved profile is full. Update existing facts rather than adding more.")
+            if patch.boundary is not None:
+                data["boundary"] = {"type": "Polygon", "coordinates": [patch.boundary + [patch.boundary[0]]]}
+            db.execute("INSERT INTO user_profiles VALUES (?,?,?) ON CONFLICT(owner) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at",
+                       (owner, json.dumps(data, ensure_ascii=False), time.time()))
+        return self.profile(owner)
 
     def begin(
         self,

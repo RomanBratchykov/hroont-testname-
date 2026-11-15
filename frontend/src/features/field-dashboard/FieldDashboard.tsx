@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FieldMap } from './FieldMap';
 import { BoundaryInput } from './BoundaryPreview';
 import { ClimateChart } from './ClimateChart';
@@ -32,15 +32,22 @@ export function FieldDashboard({ onAsk }: { onAsk: (question: string) => void })
   const climateRequest = useRef<AbortController | null>(null);
   const sourcesRequest = useRef<AbortController | null>(null);
   const locationGeneration = useRef(0);
+  const selectedRef = useRef(selected);
   useEffect(() => () => { climateRequest.current?.abort(); sourcesRequest.current?.abort(); locationGeneration.current++; }, []);
-  const select = (point: Location) => {
+  const select = useCallback((point: Location) => {
+    const previous = selectedRef.current;
+    selectedRef.current = point;
+    if (previous.latitude.toFixed(4) === point.latitude.toFixed(4) && previous.longitude.toFixed(4) === point.longitude.toFixed(4)) {
+      setSelected(point); setCenter(point);
+      return;
+    }
     climateRequest.current?.abort(); sourcesRequest.current?.abort();
     climateRequest.current = null; sourcesRequest.current = null;
     setSelected(point); setCenter(point); setClimate(null); setSources(null); setError(''); setSourceError(''); setLoading(false); setChecking(false);
     try { localStorage.setItem('croptato-field-point', JSON.stringify(point)); } catch { /* Selection still works without storage. */ }
-  };
+  }, []);
   const query = `latitude=${selected.latitude.toFixed(4)}&longitude=${selected.longitude.toFixed(4)}`;
-  const loadClimate = async () => {
+  const loadClimate = useCallback(async () => {
     climateRequest.current?.abort();
     const controller = new AbortController(); climateRequest.current = controller;
     const timeout = window.setTimeout(() => controller.abort(new Error('NASA request timed out. Please retry.')), 75000);
@@ -51,8 +58,8 @@ export function FieldDashboard({ onAsk }: { onAsk: (question: string) => void })
       if (!controller.signal.aborted) setClimate(data);
     } catch (e) { if (climateRequest.current === controller) setError(e instanceof Error ? e.message : 'NASA data is unavailable.'); }
     finally { clearTimeout(timeout); if (climateRequest.current === controller) setLoading(false); }
-  };
-  const checkSources = async () => {
+  }, [query]);
+  const checkSources = useCallback(async () => {
     sourcesRequest.current?.abort();
     const controller = new AbortController(); sourcesRequest.current = controller;
     const timeout = window.setTimeout(() => controller.abort(new Error('Source check timed out. Please retry.')), 110000);
@@ -63,7 +70,12 @@ export function FieldDashboard({ onAsk }: { onAsk: (question: string) => void })
       if (!controller.signal.aborted) setSources(data.sources);
     } catch (e) { if (sourcesRequest.current === controller) setSourceError(e instanceof Error ? e.message : 'Could not check sources.'); }
     finally { clearTimeout(timeout); if (sourcesRequest.current === controller) setChecking(false); }
-  };
+  }, [query]);
+  useEffect(() => {
+    // Defer dispatch so StrictMode's initial cleanup cancels duplicate mount requests.
+    const timer = window.setTimeout(() => { void loadClimate(); void checkSources(); }, 0);
+    return () => { clearTimeout(timer); climateRequest.current?.abort(); sourcesRequest.current?.abort(); };
+  }, [loadClimate, checkSources]);
   const locate = () => {
     if (!navigator.geolocation) { setLocationMessage('Geolocation is unavailable in this browser. Enter coordinates instead.'); return; }
     setLocating(true); setLocationMessage('Waiting for your browser location permission…');
@@ -84,7 +96,7 @@ export function FieldDashboard({ onAsk }: { onAsk: (question: string) => void })
     const link = document.createElement('a'); link.href = url; link.download = 'croptato-field-climate.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return <div className="field-dashboard">
-    <BoundaryInput />
+    <BoundaryInput onField={select} />
     <section className="field-panel" aria-labelledby="field-map-heading">
       <div className="field-panel-heading"><div><p className="page-eyebrow">01 / Locate</p><h2 id="field-map-heading">Start with your field</h2><p className="field-note">Choose a point to explore its climate. A point is not a verified field boundary.</p></div><button className="quiet-button" onClick={locate} disabled={locating}>{locating ? 'Locating…' : '⌖ Locate me'}</button></div>
       <FieldMap selected={selected} current={current} center={center} onCenter={setCenter} onSelect={select} />

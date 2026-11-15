@@ -164,13 +164,28 @@ are replaced in model context with an explicit omission notice, while full resul
 in **Tool findings**. If the continuation still cannot fit, the app returns a partial result
 with the available findings. Context overflow logs record byte counts, not private content.
 
+Soily can persist farmer-provided facts and field boundaries using `save_user_info`, and read
+them with `read_user_info`. Personal state displays this saved profile, separate from John's
+synthetic example. The dashboard's **Save field** button persists the displayed polygon and
+loads it on subsequent visits. Saving records farmer-reported information, not verification.
+Profiles are stored in SQLite and scoped to the existing private browser session cookie;
+they survive new chats, page reloads, chat-history deletion and server restarts. Clearing or
+losing that cookie loses access; there is no cross-device login account. Only confirmed server
+writes are described as saved. The welcome introduction appears only on the first chat screen
+and is dismissed when navigating to other pages.
+
+Opening Field dashboard automatically loads NASA POWER climate coverage and checks the data
+source APIs. Selecting another point or displaying a new boundary refreshes both; leaving the
+dashboard cancels pending requests. A saved boundary's center is used for its point-based
+climate query. Manual load/check buttons remain available for retries.
+
 English works immediately. Non-English input requires a configured LibreTranslate-compatible `TRANSLATION_URL`;
 otherwise the app asks for English without sending detected non-English text to the model. Language detection is local and heuristic; short ambiguous Latin text is treated as English. Short translations
 have a one-second timeout; larger inputs have 30 seconds. This is a limit, not a measured speed guarantee.
 Translation status appears beside the mascot; Settings can hide that notice.
 
 Scientific scripts/datasets, embeddings, validated Personal state extraction and charts will be added later.
-The available tools currently read chat history and report capabilities. Register future approved tools in
+The available tools include saved profile read/write, chat history, capability checks and climate/source retrieval. Register future approved tools in
 `backend/tools.py`; the model cannot create scripts or execute shell commands. The loop allows at most
 six model calls and ten tool executions, with four active turns and one active turn per chat.
 The app must explain missing evidence rather than invent scientific results.
