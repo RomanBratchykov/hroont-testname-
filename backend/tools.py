@@ -3,12 +3,14 @@
 import asyncio
 import json
 import logging
+from typing import Literal
 
 import httpx
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.config import Settings
+from backend.field_data import check_sources, climate
 from backend.store import Store
 
 log = logging.getLogger(__name__)
@@ -215,7 +217,26 @@ def _call_rag_service(
         return _unavailable("RAG retrieval service is unavailable.")
 
 
-def build_tools(store: Store, config: Settings | None = None):
+class FieldPointArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    latitude: float = Field(
+        ge=-85,
+        le=85,
+        description="User-confirmed latitude; never guess precise coordinates.",
+    )
+    longitude: float = Field(ge=-180, le=180, description="User-confirmed longitude.")
+
+
+class ClimateHistoryArgs(FieldPointArgs):
+    year: int = Field(default=2025, ge=2016, le=2025)
+    variable: Literal[
+        "T2M", "T2M_MAX", "T2M_MIN", "PRECTOTCORR", "RH2M", "WS2M", "ALLSKY_SFC_SW_DWN"
+    ] = "T2M"
+
+
+def build_tools(
+    store: Store, config: Settings | None = None, *, data_http=None, data_slots=None
+):
     """Bind tools per chat; model arguments cannot select another chat's history."""
     rag_enabled = bool(config and config.rag_url)
 
@@ -248,9 +269,17 @@ def build_tools(store: Store, config: Settings | None = None):
                 "status": "available",
                 "scientific_analysis": "unavailable",
                 "retrieval": state,
-                "datasets": [],
+                "datasets": ["NASA POWER Daily 2016–2025"]
+                if data_http is not None
+                else [],
+                "climate_retrieval": {
+                    "status": "available" if data_http is not None else "unavailable",
+                    "region": "Global coordinates, 85°S–85°N",
+                    "place_name_geocoding": "unavailable; ask for a map pin or coordinates",
+                    "source_status": "Check each requested location; global access is not regional agronomic validation.",
+                },
                 "scientific_tools": [],
-                "reason": "Retrieval supplies reference evidence; scientific calculations are not connected.",
+                "reason": "Reference and historical climate retrieval do not establish agronomic feasibility; scientific calculations are not connected.",
                 "available": ["farmer interview", "conversation history"],
                 "recommendations": "deferred",
             }
@@ -269,6 +298,82 @@ def build_tools(store: Store, config: Settings | None = None):
                 description="Check available datasets and scientific calculation capabilities.",
             ),
         ]
+
+        if data_http is not None and config is not None and data_slots is not None:
+
+            async def get_climate_history(
+                latitude: float,
+                longitude: float,
+                year: int = 2025,
+                variable: str = "T2M",
+            ) -> dict:
+                async with data_slots:
+                    result = await climate(
+                        data_http,
+                        config.database_path.parent / "dashboard-cache.sqlite",
+                        latitude,
+                        longitude,
+                    )
+                months = result.pop("months")
+                result["requested_year"] = year
+                result["variable"] = variable
+                result["unit"] = result["units"].get(variable)
+                result["months"] = [
+                    {
+                        "period": row["period"],
+                        "value": row["values"][variable],
+                        "valid_days": row["coverage"][variable],
+                        "required_days": row["days"],
+                    }
+                    for row in months
+                    if row["period"].startswith(str(year))
+                ]
+                return result
+
+            async def check_data_sources(latitude: float, longitude: float) -> dict:
+                async with data_slots:
+                    result = await check_sources(data_http, latitude, longitude)
+                # Keep provider provenance and limitations without duplicating all probe URLs.
+                # The dashboard retains full per-property request details.
+                return {
+                    "geometry": result["geometry"],
+                    "sources": [
+                        {
+                            key: source[key]
+                            for key in (
+                                "id",
+                                "name",
+                                "status",
+                                "source_url",
+                                "checked_at",
+                                "limitation",
+                            )
+                        }
+                        | {
+                            "check_statuses": [
+                                check["status"] for check in source["checks"]
+                            ]
+                        }
+                        for source in result["sources"]
+                    ],
+                }
+
+            tool_list.extend(
+                [
+                    StructuredTool.from_function(
+                        coroutine=get_climate_history,
+                        name="get_climate_history",
+                        args_schema=ClimateHistoryArgs,
+                        description="Retrieve one year and variable of historical NASA POWER monthly climate at user-confirmed coordinates worldwide, including outside Kharkiv/Ukraine. Years 2016–2025. Return source, units, coverage and missing values; not forecasts or crop suitability. Ask for a pin if coordinates are unknown.",
+                    ),
+                    StructuredTool.from_function(
+                        coroutine=check_data_sources,
+                        name="check_data_sources",
+                        args_schema=FieldPointArgs,
+                        description="Check the six specified NASA, ISRIC and FAOSTAT APIs for a location worldwide. Metadata/catalog access does not mean raster extraction or analysis. FAOSTAT is only the documented Ukraine benchmark probe.",
+                    ),
+                ]
+            )
 
         if rag_enabled and config is not None:
 

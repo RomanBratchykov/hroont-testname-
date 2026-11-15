@@ -119,6 +119,8 @@ def test_tools_are_bounded_and_unknown_tools_never_execute(tmp_path):
             assert {t["function"]["name"] for t in body["tools"]} == {
                 "read_history",
                 "get_capabilities",
+                "get_climate_history",
+                "check_data_sources",
             }
             return httpx.Response(
                 200,

@@ -11,7 +11,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -19,6 +19,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from backend.config import ROOT, Settings
 from backend.documents import Attachment, extract
+from backend.field_data import check_sources, climate
 from backend.orchestrator import Orchestrator
 from backend.providers import Provider
 from backend.store import Conflict, SessionCapacity, Store
@@ -66,8 +67,15 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
         async with httpx.AsyncClient(
             transport=transport, follow_redirects=False, trust_env=False
         ) as http:
+            app.state.data_http = http
+            app.state.data_slots = asyncio.Semaphore(2)
             app.state.engine = Orchestrator(
-                config, store, Provider(config, http), build_tools(store, config)
+                config,
+                store,
+                Provider(config, http),
+                build_tools(
+                    store, config, data_http=http, data_slots=app.state.data_slots
+                ),
             )
 
             async def cleanup():
@@ -180,10 +188,33 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
             or bool(config.api_key and config.input_rate and config.output_rate),
             "scientific_tools": [],
             "scientific_analysis": "unavailable",
+            "climate_retrieval": "available",
+            "data_tools": ["get_climate_history", "check_data_sources"],
             "retrieval": retrieval,
             "rag_configured": bool(config.rag_url),
             "translation_configured": bool(config.translation_url),
         }
+
+    @app.get("/api/field-data")
+    async def field_data(
+        latitude: float = Query(ge=-85, le=85, allow_inf_nan=False),
+        longitude: float = Query(ge=-180, le=180, allow_inf_nan=False),
+    ):
+        async with app.state.data_slots:
+            return await climate(
+                app.state.data_http,
+                config.database_path.parent / "dashboard-cache.sqlite",
+                latitude,
+                longitude,
+            )
+
+    @app.get("/api/data-sources")
+    async def data_sources(
+        latitude: float = Query(ge=-85, le=85, allow_inf_nan=False),
+        longitude: float = Query(ge=-180, le=180, allow_inf_nan=False),
+    ):
+        async with app.state.data_slots:
+            return await check_sources(app.state.data_http, latitude, longitude)
 
     @app.post("/api/chat")
     async def chat(payload: ChatRequest, request: Request):

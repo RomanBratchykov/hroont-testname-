@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { FieldDashboard } from '../field-dashboard/FieldDashboard';
 import demo, { showcaseInputs } from '../../config/showcase';
 
 export function DemoDashboard({ onAsk }: { onAsk: (question: string) => void }) {
@@ -13,7 +14,9 @@ export function DemoDashboard({ onAsk }: { onAsk: (question: string) => void }) 
     URL.revokeObjectURL(url);
   };
   return <section className="workspace-page" aria-labelledby="dashboard-title">
-    <header className="page-heading"><p className="page-eyebrow">Saved example · Test account</p><h1 id="dashboard-title" ref={heading} tabIndex={-1}>John’s field, at a glance</h1><p>{demo.status}. These examples remain available after restarting Croptato.</p></header>
+    <header className="page-heading"><p className="page-eyebrow">Field intelligence</p><h1 id="dashboard-title" ref={heading} tabIndex={-1}>Your field, connected</h1><p>Explore a location. Inspect its climate. Know exactly where your data comes from.</p></header>
+    <FieldDashboard onAsk={onAsk} />
+    <h2 className="page-eyebrow">Saved synthetic example · Separate from selected-point climate</h2>
     <section className="personal-section demo-profile" aria-label="Demonstration field">
       <h2>{demo.accountName} · {demo.location}</h2>
       <dl><div><dt>Field size</dt><dd>Approximately {demo.areaHa} ha · synthetic</dd></div><div><dt>Water</dt><dd>{demo.water}</dd></div><div><dt>Crop history</dt><dd>{demo.cropHistory}</dd></div><div><dt>Soil</dt><dd>{demo.soil}</dd></div></dl>
