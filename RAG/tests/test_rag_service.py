@@ -33,7 +33,9 @@ class _FakeEmbedder:
 
 
 class _FakeQdrantClient:
-    def __init__(self, points: list[SimpleNamespace] | None = None, exists: bool = True) -> None:
+    def __init__(
+        self, points: list[SimpleNamespace] | None = None, exists: bool = True
+    ) -> None:
         self._points = points or []
         self._exists = exists
         self.last_query_kwargs: dict | None = None
@@ -54,11 +56,17 @@ def test_qdrant_retriever_returns_filtered_chunks_and_handles_offline():
     points = [
         SimpleNamespace(
             score=0.92,
-            payload={"source_file": "Kherson/rotation.jsonl", "text": "Winter wheat after pea improves N."},
+            payload={
+                "source_file": "Kherson/rotation.jsonl",
+                "text": "Winter wheat after pea improves N.",
+            },
         ),
         SimpleNamespace(
             score=0.81,
-            payload={"source_file": "Broadbalk/README.md", "text": "Broadbalk continuous wheat trial."},
+            payload={
+                "source_file": "Broadbalk/README.md",
+                "text": "Broadbalk continuous wheat trial.",
+            },
         ),
     ]
     retriever = qdrant_service.QdrantRetriever(collection_name="agronomy_knowledge")
@@ -79,7 +87,9 @@ def test_qdrant_retriever_returns_filtered_chunks_and_handles_offline():
     assert len(kherson_only) == 1
     assert kherson_only[0]["source_file"] == "Kherson/rotation.jsonl"
 
-    missing_retriever = qdrant_service.QdrantRetriever(collection_name="agronomy_knowledge")
+    missing_retriever = qdrant_service.QdrantRetriever(
+        collection_name="agronomy_knowledge"
+    )
     missing_retriever._client = _FakeQdrantClient(exists=False)
     missing_retriever._model = _FakeEmbedder()
     assert missing_retriever.retrieve_chunks("wheat") == []
@@ -90,13 +100,19 @@ def test_postgres_helper_queries_relevant_tables_and_rejects_writes(tmp_path):
     engine = create_engine(f"sqlite:///{db_file}")
     with engine.begin() as conn:
         conn.execute(
-            text("CREATE TABLE broadbalk_wheat_yield (year INTEGER, treatment TEXT, grain_t_ha REAL)")
+            text(
+                "CREATE TABLE broadbalk_wheat_yield (year INTEGER, treatment TEXT, grain_t_ha REAL)"
+            )
         )
         conn.execute(
-            text("INSERT INTO broadbalk_wheat_yield VALUES (2015, 'N144', 7.8), (2016, 'Nil', 1.9)")
+            text(
+                "INSERT INTO broadbalk_wheat_yield VALUES (2015, 'N144', 7.8), (2016, 'Nil', 1.9)"
+            )
         )
         conn.execute(
-            text("CREATE TABLE marchfeld_soilparameter (site TEXT, ph REAL, organic_c_pct REAL)")
+            text(
+                "CREATE TABLE marchfeld_soilparameter (site TEXT, ph REAL, organic_c_pct REAL)"
+            )
         )
         conn.execute(
             text("INSERT INTO marchfeld_soilparameter VALUES ('Marchfeld', 7.4, 1.85)")
@@ -107,13 +123,17 @@ def test_postgres_helper_queries_relevant_tables_and_rejects_writes(tmp_path):
     assert status["connected"] is True
     assert status["table_count"] == 2
 
-    wheat_results = helper.query_relevant_sql_data("What is Broadbalk wheat grain yield?", max_tables=1)
+    wheat_results = helper.query_relevant_sql_data(
+        "What is Broadbalk wheat grain yield?", max_tables=1
+    )
     assert len(wheat_results) == 1
     assert wheat_results[0]["table"] == "broadbalk_wheat_yield"
     assert wheat_results[0]["row_count"] == 2
     assert wheat_results[0]["sample_rows"][0]["grain_t_ha"] == 7.8
 
-    rows = helper.execute_readonly_query("SELECT treatment, grain_t_ha FROM broadbalk_wheat_yield")
+    rows = helper.execute_readonly_query(
+        "SELECT treatment, grain_t_ha FROM broadbalk_wheat_yield"
+    )
     assert len(rows) == 2
 
     for bad_sql in [
@@ -148,7 +168,11 @@ def test_llm_service_combines_rag_context_and_strips_think_tags(monkeypatch):
         llm_service,
         "retrieve_chunks",
         lambda q, top_k=5, source_filter=None: [
-            {"source_file": "Kherson/rotation.jsonl", "score": 0.91, "text": "Legumes precede winter wheat."}
+            {
+                "source_file": "Kherson/rotation.jsonl",
+                "score": 0.91,
+                "text": "Legumes precede winter wheat.",
+            }
         ],
     )
     monkeypatch.setattr(
@@ -189,12 +213,18 @@ def test_llm_service_handles_unreachable_deepseek_gracefully(monkeypatch):
         def create(self, **kwargs):
             raise ConnectionError("Ollama not running")
 
-    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=_BrokenCompletions()))
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=_BrokenCompletions())
+    )
     monkeypatch.setattr(
         llm_service,
         "retrieve_chunks",
         lambda q, top_k=5, source_filter=None: [
-            {"source_file": "Kherson/README.md", "score": 0.88, "text": "Kherson rotation guide."}
+            {
+                "source_file": "Kherson/README.md",
+                "score": 0.88,
+                "text": "Kherson rotation guide.",
+            }
         ],
     )
     monkeypatch.setattr(llm_service, "query_relevant_sql_data", lambda q: [])
@@ -205,95 +235,105 @@ def test_llm_service_handles_unreachable_deepseek_gracefully(monkeypatch):
     assert len(result["sources"]) == 1
 
 
-def test_rag_fastapi_endpoints_and_cors(monkeypatch):
-    rag_main._CONVERSATIONS.clear()
+def test_rag_fastapi_retrieval_health_and_model_route_boundary(monkeypatch):
     monkeypatch.setattr(
         rag_main,
         "check_qdrant_status",
-        lambda: {"connected": True, "collection": "agronomy_knowledge", "exists": True, "points_count": 10},
+        lambda: {
+            "connected": True,
+            "exists": True,
+            "points_count": 10,
+            "state": "ready",
+        },
     )
     monkeypatch.setattr(
         rag_main,
         "check_postgres_status",
-        lambda: {"connected": True, "table_count": 3, "tables": ["yield_data"]},
+        lambda: {
+            "connected": True,
+            "table_count": 3,
+            "state": "ready",
+        },
     )
     monkeypatch.setattr(
         rag_main,
         "retrieve_chunks",
-        lambda q, top_k=5, source_filter=None: [
-            {"source_file": "Kherson/rotation.jsonl", "score": 0.9, "text": "Sunflower-wheat rotation."}
+        lambda *args, **kwargs: [
+            {
+                "source_file": "Kherson/rotation.jsonl",
+                "score": 0.9,
+                "text": "Sunflower-wheat rotation.",
+            },
         ],
     )
     monkeypatch.setattr(
         rag_main,
         "query_relevant_sql_data",
-        lambda q: [{"table": "yield_data", "columns": ["crop"], "row_count": 1, "sample_rows": [{"crop": "wheat"}]}],
+        lambda *args, **kwargs: [
+            {
+                "table": "yield_data",
+                "columns": ["crop"],
+                "row_count": 1,
+                "sample_rows": [{"crop": "wheat"}],
+            },
+        ],
     )
-    monkeypatch.setattr(
-        rag_main,
-        "generate_rag_answer",
-        lambda prompt, **kwargs: {
-            "answer": f"Grounded reply for: {prompt}",
-            "status": "completed",
-            "model": "deepseek-r1:8b",
-            "sources": [{"source_file": "Kherson/rotation.jsonl", "score": 0.9, "text": "Sunflower-wheat rotation."}],
-            "sql_data": [{"table": "yield_data", "columns": ["crop"], "row_count": 1, "sample_rows": [{"crop": "wheat"}]}],
-            "evidence": [{"type": "vector", "source_file": "Kherson/rotation.jsonl"}],
-        },
-    )
-
     with TestClient(rag_main.app) as client:
-        health = client.get("/health", headers={"Origin": "http://localhost:5173"})
+        health = client.get("/health", headers={"Origin": "https://unrelated.example"})
         assert health.status_code == 200
-        assert health.headers.get("access-control-allow-origin") == "*"
-        assert health.json()["qdrant"]["points_count"] == 10
-        assert health.json()["postgres"]["table_count"] == 3
-
+        assert "access-control-allow-origin" not in health.headers
+        assert health.json()["status"] == "available"
+        assert health.json()["scientific_tools"] == []
         retrieved = client.post("/retrieve", json={"query": "wheat", "top_k": 3})
         assert retrieved.status_code == 200
         assert len(retrieved.json()["chunks"]) == 1
         assert len(retrieved.json()["sql_data"]) == 1
-
-        rec = client.post("/recommend", json={"query": "Best rotation for Kherson?"})
-        assert rec.status_code == 200
-        assert "Grounded reply" in rec.json()["answer"]
-
-        stream_resp = client.post(
-            "/api/chat",
-            json={
-                "action": "send",
-                "conversation_id": "conv-1",
-                "request_id": "req-1",
-                "message": "Analyze Kherson soil",
-                "mode": "fast",
-            },
-        )
-        assert stream_resp.status_code == 200
-        events = [json.loads(line) for line in stream_resp.text.splitlines() if line]
-        assert events[-1]["type"] == "answer"
-        assert "Grounded reply" in events[-1]["content"]
-        assert len(events[-1]["evidence"]) == 1
-
-        listed = client.post("/api/chat", json={"action": "list"})
-        assert len(listed.json()["conversations"]) == 1
+        for route in ["/recommend", "/chat", "/api/chat"]:
+            response = client.post(route, json={"message": "Analyze soil"})
+            assert response.status_code == 410
+            assert response.json()["detail"]["code"] == "use_main_backend"
 
 
 def test_backend_wiring_with_rag_and_local_deepseek(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        qdrant_service,
+        rag_main,
         "retrieve_chunks",
-        lambda q, top_k=5, source_filter=None: [
-            {"source_file": "Kherson/rotation.jsonl", "score": 0.95, "text": "Sainfoin improves soil structure."}
+        lambda q, top_k=5, source_filter=None, **filters: [
+            {
+                "source_file": "Kherson/rotation.jsonl",
+                "score": 0.95,
+                "text": "Sainfoin improves soil structure.",
+            }
         ],
     )
     monkeypatch.setattr(
-        rag_db,
+        rag_main,
         "query_relevant_sql_data",
-        lambda q, max_tables=4, rows_per_table=8: [
-            {"table": "yield_data", "columns": ["crop", "yield"], "row_count": 5, "sample_rows": [{"crop": "wheat", "yield": 4.2}]}
+        lambda q, max_tables=4, rows_per_table=8, **filters: [
+            {
+                "table": "yield_data",
+                "columns": ["crop", "yield"],
+                "row_count": 5,
+                "sample_rows": [{"crop": "wheat", "yield": 4.2}],
+            }
         ],
     )
 
+    monkeypatch.setattr(
+        rag_main,
+        "check_qdrant_status",
+        lambda: {
+            "connected": True,
+            "exists": True,
+            "points_count": 2,
+            "state": "ready",
+        },
+    )
+    monkeypatch.setattr(
+        rag_main,
+        "check_postgres_status",
+        lambda: {"connected": True, "table_count": 1, "state": "ready"},
+    )
     config = Settings(
         database_path=tmp_path / "wired.sqlite",
         provider="deepseek",
@@ -303,8 +343,14 @@ def test_backend_wiring_with_rag_and_local_deepseek(tmp_path, monkeypatch):
     )
     store = Store(config.database_path)
     tools = build_tools(store, config)("chat-1")
-    assert {"read_history", "get_capabilities", "search_agronomy_knowledge", "query_crop_soil_db"} == set(tools)
-    assert tools["get_capabilities"].invoke({})["scientific_analysis"] == "available"
+    assert {
+        "read_history",
+        "get_capabilities",
+        "search_agronomy_knowledge",
+        "query_crop_soil_db",
+    } == set(tools)
+    assert tools["get_capabilities"].invoke({})["scientific_analysis"] == "unavailable"
+    assert tools["get_capabilities"].invoke({})["retrieval"]["status"] == "available"
 
     captured_requests: list[dict] = []
 
@@ -333,7 +379,8 @@ def test_backend_wiring_with_rag_and_local_deepseek(tmp_path, monkeypatch):
         health = client.get("/api/health").json()
         assert health["configured"] is True
         assert health["rag_configured"] is True
-        assert "search_agronomy_knowledge" in health["scientific_tools"]
+        assert health["scientific_tools"] == []
+        assert health["retrieval"]["status"] == "available"
 
         resp = client.post(
             "/api/chat",
@@ -352,4 +399,7 @@ def test_backend_wiring_with_rag_and_local_deepseek(tmp_path, monkeypatch):
         assert "checking soil tables" not in answer["content"]
         assert "Sainfoin and winter wheat" in answer["content"]
         assert len(answer["evidence"]) == 2
-        assert "Sainfoin improves soil structure." in captured_requests[0]["messages"][0]["content"]
+        assert (
+            "Sainfoin improves soil structure."
+            in captured_requests[0]["messages"][0]["content"]
+        )
