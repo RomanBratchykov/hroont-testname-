@@ -1,21 +1,57 @@
-# AgroResilience local test app
+# AgroResilience · Croptato
 
-Requires Python 3.12+, Node 22.18+ and npm. On Linux Mint, Python setup also needs `python3-venv`.
-Run commands from this folder.
+## If the website does not open, run the app on your computer
+
+You can use the app locally if the hosted website is unavailable. Render is not required for this fallback; the chat connects directly to the hosted DeepSeek API.
+
+1. Download this repository as a ZIP and extract it, or clone it. You need the **whole project**, not just the script.
+2. Install **Python 3.12+** with pip/venv and **Node.js 22.18+ (22.x) or 24+** with npm. On Ubuntu/Linux Mint, install `python3-venv` if needed. Have an internet connection and a funded **DeepSeek API key** ready.
+3. Open a terminal in the extracted project folder and run the command for your computer.
+
+**Windows — PowerShell or Command Prompt:**
+
+```powershell
+py -3 start_deepseek.py
+```
+
+**Linux or macOS — Terminal:**
+
+```bash
+python3 start_deepseek.py
+```
+
+4. On the first run, enter your DeepSeek API key when asked; it will not be shown as you type. Enter the current input and output prices in USD per million tokens from [DeepSeek’s pricing page](https://api-docs.deepseek.com/quick_start/pricing/) for the configured model (`deepseek-flash` by default). Use uncached input and the highest applicable rates for conservative cost tracking. Existing settings in `.env` are reused.
+5. Wait for installation and the frontend build to finish, then open **http://127.0.0.1:8000** in your browser. Keep the terminal open while using the app. Press **Ctrl+C** to stop it.
+
+**What the script does:** it creates a project Python environment, installs missing app dependencies, saves entered credentials in the private, Git-ignored `.env` file, builds the web interface, and starts the app on your computer using DeepSeek. It needs no Render account, Docker, Ollama or local GPU for this default mode. Chat requests use your DeepSeek credit; starting the app alone does not send a paid model request. The API key stays on the backend.
+
+The local fallback includes chat, supported file attachments, John’s saved example profile and the example dashboard. Retrieval from the scientific document/database collection is optional and needs additional setup; it is not enabled by this command.
+
+**If startup fails:** read the terminal message. For missing Python or Node, install the prerequisites above and rerun. To reinstall app dependencies, add `--setup`. If port 8000 is occupied, add `--port 8080` and open **http://127.0.0.1:8080**. A rejected API key or exhausted DeepSeek balance must be corrected in your DeepSeek account. See [detailed setup and optional retrieval](docs/setup.md). Linux has been tested; Windows/macOS launch paths are provided but have not been verified on those operating systems.
+
+## What the app does and its scientific limits
+
+Croptato helps farmers discuss their field, review supplied information and explore example crop rotations with Soily, a DeepSeek-powered assistant. It can explain available evidence, identify missing inputs and show the saved demonstration dashboard.
+
+The project is designed to preserve scientific accuracy through explicit sources, units, time periods and data-quality limitations, and by separating model explanations from deterministic calculations. NASA POWER represents historical gridded climate, not a field-station observation or a forecast. Missing measurements must not become invented values or zeros.
+
+**This version is a demonstration, not a scientifically validated decision system.** John’s field, example rotations and saved dashboard are synthetic. The main chat does not yet run the separate climate-analysis/dashboard pipeline or produce validated agronomic recommendations. DeepSeek answers can be wrong and need checking against their sources. Scientific safeguards do not establish field-level accuracy; real recommendations require suitable data, connected calculations and regional validation.
+
+The sections below cover advanced setup, providers and development. Run commands from the project folder.
 
 ## First setup
 
 ```bash
 ./run.sh --setup
-cp .env.example .env
 ```
 
 On Windows PowerShell:
 
 ```powershell
 .\run.ps1 --setup
-Copy-Item .env.example .env
 ```
+
+Setup creates `.env` automatically if it is missing and preserves existing settings.
 
 For the existing tunnel, set `PUBLIC_ORIGIN=https://gravitydefiers.dpdns.org` in `.env`.
 Start the production app on the tunnel’s configured port, then run the tunnel in another terminal:
@@ -164,5 +200,3 @@ John is a test persona. Kherson, the synthetic 30-ha rainfed field, and the thre
 follow the technical specification; none is a validated scientific recommendation.
 Chat can discuss hypothetical changes but cannot overwrite the shared example. Editing the JSON
 and restarting the app publishes an updated example. Scientific analysis is not connected.
-
-For a local fallback using hosted DeepSeek, run `python3 start_deepseek.py` (Windows: `py -3 start_deepseek.py`). It installs missing dependencies and prompts privately for configuration. See [fallback setup](docs/setup.md).
