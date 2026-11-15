@@ -1,0 +1,34 @@
+# Python virtual environments & bytecode
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Environment variables (keep template)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE & Editor configs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Data directory: ignore extracted folders/files, keep .gitkeep and the 6 compact raw .zip archives (~7.5 MB total).
+# Remove the `!data/*.zip` line below if you prefer not to track raw archives in Git.
+data/*
+!data/.gitkeep
+!data/*.zip

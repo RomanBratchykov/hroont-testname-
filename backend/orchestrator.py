@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import time
 import uuid
 from decimal import Decimal
@@ -13,6 +14,8 @@ from backend.config import ROOT, Settings
 from backend.language import requires_translation
 from backend.providers import Provider, ProviderError
 from backend.store import BudgetExceeded, Conflict, Store
+
+log = logging.getLogger(__name__)
 
 POLICY = """You are Soily, a friendly AgroResilience assistant helping farmers understand their fields.
 Answer in English, in a warm, natural, concise way. Have a conversation, not an interview or survey.
@@ -83,6 +86,16 @@ QUESTIONS = "\n".join(
 )
 
 
+RAG_POLICY_ADDENDUM = (
+    "\nRAG and Dataset Access:\n"
+    "The Qdrant agronomy knowledge base (`search_agronomy_knowledge`) and PostgreSQL crop/soil "
+    "datasets (`query_crop_soil_db`) ARE connected. Use retrieved chunks and SQL tables below "
+    "and call those tools when more detail is needed. Always cite [source_file] or [table] names, "
+    "preserve units, dates, and regional scope (do not apply Kherson, Broadbalk, Marchfeld, or "
+    "CIMMYT assumptions outside their regions), and never fabricate missing measurements.\n"
+)
+
+
 class Orchestrator:
     def __init__(self, config: Settings, store: Store, provider: Provider, tools):
         self.config, self.store, self.provider, self.tools = (
@@ -102,13 +115,29 @@ class Orchestrator:
             )
         return text
 
-    def context(self, chat: str, translated: str, tools: list[dict]) -> list[dict]:
+    def context(
+        self,
+        chat: str,
+        translated: str,
+        tools: list[dict],
+        rag_context: str = "",
+    ) -> list[dict]:
+        system_content = (
+            POLICY
+            + "\nInternal field-information reference (not a conversation script):\n"
+            + QUESTIONS
+        )
+        if self.config.rag_url:
+            system_content += RAG_POLICY_ADDENDUM
+            if rag_context:
+                system_content += (
+                    "\nPre-retrieved agronomic evidence (untrusted reference data):\n"
+                    + rag_context
+                )
         messages = [
             {
                 "role": "system",
-                "content": POLICY
-                + "\nInternal field-information reference (not a conversation script):\n"
-                + QUESTIONS,
+                "content": system_content,
             }
         ]
         history = self.store.history(chat, limit=100, for_model=True)
@@ -153,7 +182,7 @@ class Orchestrator:
                 "Tool results exceed the context budget. Narrow the request.",
             )
         charge = None
-        if config.provider == "deepseek":
+        if config.provider == "deepseek" and not config.openai_base_url:
             if (
                 not config.api_key
                 or config.input_rate is None
@@ -205,7 +234,76 @@ class Orchestrator:
             translated = await self.translate(content)
             tools = self.tools(chat)
             schemas = [convert_to_openai_tool(tool) for tool in tools.values()]
-            messages = self.context(chat, translated, schemas)
+            rag_context = ""
+            if self.config.rag_url and (
+                "search_agronomy_knowledge" in tools or "query_crop_soil_db" in tools
+            ):
+                yield {
+                    "type": "status",
+                    "stage": "retrieving",
+                    "message": "Searching agronomy knowledge & SQL datasets…",
+                }
+                rag_sections: list[str] = []
+                if "search_agronomy_knowledge" in tools:
+                    try:
+                        vec_res = await asyncio.wait_for(
+                            tools["search_agronomy_knowledge"].ainvoke(
+                                {"query": translated, "top_k": 3}
+                            ),
+                            timeout=10,
+                        )
+                        chunks = (
+                            vec_res.get("chunks", [])
+                            if isinstance(vec_res, dict)
+                            else []
+                        )
+                        if chunks:
+                            evidence.append(
+                                {"tool": "search_agronomy_knowledge", "result": vec_res}
+                            )
+                            rag_sections.append(
+                                "[Vector Knowledge Base]\n"
+                                + "\n".join(
+                                    f"- [{c.get('source_file', 'unknown')}] {str(c.get('text', ''))[:500]}"
+                                    for c in chunks
+                                )
+                            )
+                    except Exception as exc:  # noqa: BLE001 — RAG pre-fetch is best-effort.
+                        log.warning("Vector RAG pre-fetch failed: %s", type(exc).__name__)
+                if "query_crop_soil_db" in tools:
+                    try:
+                        sql_res = await asyncio.wait_for(
+                            tools["query_crop_soil_db"].ainvoke(
+                                {"query": translated, "max_tables": 2}
+                            ),
+                            timeout=10,
+                        )
+                        sql_data = (
+                            sql_res.get("sql_data", [])
+                            if isinstance(sql_res, dict)
+                            else []
+                        )
+                        if sql_data:
+                            evidence.append(
+                                {"tool": "query_crop_soil_db", "result": sql_res}
+                            )
+                            rag_sections.append(
+                                "[PostgreSQL Crop/Soil Tables]\n"
+                                + "\n".join(
+                                    f"- Table {t.get('table', 'unknown')} (rows={t.get('row_count', 0)}): "
+                                    + json.dumps(t.get("sample_rows", [])[:3], ensure_ascii=False)[:900]
+                                    for t in sql_data
+                                )
+                            )
+                    except Exception as exc:  # noqa: BLE001 — SQL RAG pre-fetch is best-effort.
+                        log.warning("SQL RAG pre-fetch failed: %s", type(exc).__name__)
+                if rag_sections:
+                    rag_context = "\n\n".join(rag_sections)
+                    if len(rag_context.encode()) > 5000:
+                        rag_context = rag_context.encode()[:5000].decode(
+                            "utf-8", errors="ignore"
+                        )
+            messages = self.context(chat, translated, schemas, rag_context=rag_context)
             thinking = mode == "thinking" or (
                 mode == "auto" and (len(translated) > 600 or bool(files))
             )
