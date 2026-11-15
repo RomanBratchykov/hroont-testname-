@@ -139,7 +139,7 @@ systemctl --user disable --now croptato.service
 The site opens directly with a Soily introduction on every page load; there is no login screen.
 All visitors can view John’s shared test profile (`/#/personal-state`) and saved example dashboard
 (`/#/dashboard`) without using a model slot. Visitor chats remain private guest sessions.
-The shared example is saved in `frontend/src/config/demo.json`, bundled with the site and supplied
+The shared example is saved in `input_data/john_showcase.json`, bundled with the site and supplied
 to Soily’s context. It survives server restarts and can be downloaded from the dashboard.
 John is a test persona. Kherson, the synthetic 30-ha rainfed field, and the three example rotations
 follow the technical specification; none is a validated scientific recommendation.

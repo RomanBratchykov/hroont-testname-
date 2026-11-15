@@ -1,0 +1,746 @@
+{
+  "schema_version": 1,
+  "revision": 1,
+  "id": "john-kherson-showcase-v1",
+  "provenance": {
+    "status": "synthetic",
+    "created_at": "2026-11-15",
+    "authorized_use": "User-authorized fictional inputs for Croptato showcase and pipeline tests.",
+    "scope": "All farmer facts, history, dates, soil tests, management, yields and financial inputs below are invented demonstration assumptions. They are not observations, lab measurements, market quotes or API data.",
+    "reference": "Pilot location, approximate area and last-three-crop order follow AGENTS/AgroResilience_Technical_Scientific_Specification_v1.1.docx.md. Other values are user-authorized synthetic inputs, not scientific parameter calibration."
+  },
+  "farmer": {
+    "id": "john",
+    "name": "John",
+    "account_type": "shared_showcase",
+    "country": "Ukraine",
+    "region": "Kherson Oblast"
+  },
+  "field": {
+    "id": "john-field-1",
+    "name": "John’s demonstration field",
+    "location": "Kherson Oblast, Ukraine",
+    "center": {
+      "latitude": 46.7491,
+      "longitude": 32.7091
+    },
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            32.70550556,
+            46.74663711
+          ],
+          [
+            32.71269444,
+            46.74663711
+          ],
+          [
+            32.71269444,
+            46.75156289
+          ],
+          [
+            32.70550556,
+            46.75156289
+          ],
+          [
+            32.70550556,
+            46.74663711
+          ]
+        ]
+      ]
+    },
+    "coordinate_reference_system": "EPSG:4326",
+    "declared_area": {
+      "value": 30,
+      "unit": "ha"
+    },
+    "verified_boundary": false,
+    "geometry_method": "Synthetic rectangle centered on pilot coordinates, approximately 30 ha using a spherical Earth construction. Recalculate ellipsoidal/projected area in the field-validation pipeline. This is not a cadastral boundary."
+  },
+  "irrigation": {
+    "available": false,
+    "reliable_water": {
+      "value": 0,
+      "unit": "mm/season"
+    },
+    "available_months": [],
+    "source": "none",
+    "status": "synthetic"
+  },
+  "crop_history": {
+    "records": [
+      {
+        "harvest_year": 2016,
+        "crop": "winter_wheat",
+        "sowing_date": "2015-10-05",
+        "harvest_date": "2016-06-30",
+        "failed_crop": false,
+        "yield": {
+          "value": 3.2,
+          "unit": "t/ha"
+        }
+      },
+      {
+        "harvest_year": 2017,
+        "crop": "peas",
+        "sowing_date": "2017-04-15",
+        "harvest_date": "2017-09-15",
+        "failed_crop": false,
+        "yield": {
+          "value": 1.8,
+          "unit": "t/ha"
+        }
+      },
+      {
+        "harvest_year": 2018,
+        "crop": "winter_barley",
+        "sowing_date": "2017-10-05",
+        "harvest_date": "2018-06-30",
+        "failed_crop": false,
+        "yield": {
+          "value": 2.8,
+          "unit": "t/ha"
+        }
+      },
+      {
+        "harvest_year": 2019,
+        "crop": "grain_sorghum",
+        "sowing_date": "2019-04-15",
+        "harvest_date": "2019-09-15",
+        "failed_crop": false,
+        "yield": {
+          "value": 3.4,
+          "unit": "t/ha"
+        }
+      },
+      {
+        "harvest_year": 2020,
+        "crop": "chickpea",
+        "sowing_date": "2020-04-15",
+        "harvest_date": "2020-09-15",
+        "failed_crop": false,
+        "yield": {
+          "value": 1.6,
+          "unit": "t/ha"
+        }
+      },
+      {
+        "harvest_year": 2021,
+        "crop": "winter_wheat",
+        "sowing_date": "2020-10-05",
+        "harvest_date": "2021-06-30",
+        "failed_crop": false,
+        "yield": {
+          "value": 3.1,
+          "unit": "t/ha"
+        }
+      },
+      {
+        "harvest_year": 2022,
+        "crop": "millet",
+        "sowing_date": "2022-04-15",
+        "harvest_date": "2022-09-15",
+        "failed_crop": false,
+        "yield": {
+          "value": 2.2,
+          "unit": "t/ha"
+        }
+      },
+      {
+        "harvest_year": 2023,
+        "crop": "sunflower",
+        "sowing_date": "2023-04-15",
+        "harvest_date": "2023-09-15",
+        "failed_crop": false,
+        "yield": {
+          "value": 1.7,
+          "unit": "t/ha"
+        }
+      },
+      {
+        "harvest_year": 2024,
+        "crop": "sunflower",
+        "sowing_date": "2024-04-15",
+        "harvest_date": "2024-09-15",
+        "failed_crop": false,
+        "yield": {
+          "value": 1.1,
+          "unit": "t/ha"
+        }
+      },
+      {
+        "harvest_year": 2025,
+        "crop": "winter_wheat",
+        "sowing_date": "2024-10-05",
+        "harvest_date": "2025-06-30",
+        "failed_crop": false,
+        "yield": {
+          "value": 3.0,
+          "unit": "t/ha"
+        }
+      }
+    ],
+    "date_status": "synthetic exact dates; not agronomically calibrated sowing/harvest windows",
+    "warnings": [
+      "Sunflower in 2023 and 2024 is an intentional adverse historical example. Preserve and flag repeated cropping; do not treat it as an approved rotation."
+    ]
+  },
+  "crop_preferences": {
+    "include": [
+      "winter_wheat",
+      "winter_barley",
+      "winter_rye",
+      "peas",
+      "chickpea",
+      "oil_flax",
+      "millet",
+      "grain_sorghum",
+      "mulch_fallow"
+    ],
+    "exclude": [
+      "sunflower",
+      "maize",
+      "winter_rapeseed",
+      "black_fallow",
+      "green_manure_fallow"
+    ],
+    "reason": "Demonstration farmer prefers dryland alternatives, avoids more sunflower after repeated years, and allows residue-retaining fallow. Preferences do not establish scientific suitability.",
+    "legal_or_contractual_restrictions": "none in fictional scenario"
+  },
+  "planning": {
+    "start_harvest_year": 2026,
+    "horizon_years": 8,
+    "end_harvest_year": 2033,
+    "priority": "balanced",
+    "compare_objectives": [
+      "economic_potential",
+      "balanced",
+      "climate_soil_resilience"
+    ],
+    "cyclic_validation_required": true
+  },
+  "soil": {
+    "status": "synthetic",
+    "texture": "loam",
+    "soil_type": "not classified; do not infer chernozem or dark chestnut from region",
+    "lab_report": "Fictional test fixture; no laboratory performed these measurements.",
+    "sample_date": "2025-10-15",
+    "layers": [
+      {
+        "depth": {
+          "top": 0,
+          "bottom": 5,
+          "unit": "cm"
+        },
+        "sand": {
+          "value": 400,
+          "unit": "g/kg"
+        },
+        "silt": {
+          "value": 400,
+          "unit": "g/kg"
+        },
+        "clay": {
+          "value": 200,
+          "unit": "g/kg"
+        },
+        "organic_carbon": {
+          "value": 14,
+          "unit": "g/kg"
+        },
+        "ph_h2o": {
+          "value": 7.4,
+          "unit": "pH"
+        },
+        "bulk_density": {
+          "value": 1.3,
+          "unit": "g/cm3"
+        }
+      },
+      {
+        "depth": {
+          "top": 5,
+          "bottom": 15,
+          "unit": "cm"
+        },
+        "sand": {
+          "value": 400,
+          "unit": "g/kg"
+        },
+        "silt": {
+          "value": 400,
+          "unit": "g/kg"
+        },
+        "clay": {
+          "value": 200,
+          "unit": "g/kg"
+        },
+        "organic_carbon": {
+          "value": 11,
+          "unit": "g/kg"
+        },
+        "ph_h2o": {
+          "value": 7.4,
+          "unit": "pH"
+        },
+        "bulk_density": {
+          "value": 1.38,
+          "unit": "g/cm3"
+        }
+      }
+    ],
+    "additional_properties": {
+      "electrical_conductivity": {
+        "value": 0.8,
+        "unit": "dS/m"
+      },
+      "effective_depth": {
+        "value": 100,
+        "unit": "cm"
+      },
+      "available_water_capacity": {
+        "value": 140,
+        "unit": "mm/m"
+      },
+      "root_restricting_layer": "none in fictional scenario",
+      "compaction": "no reported compaction in fictional scenario",
+      "drainage": "well drained in fictional scenario"
+    },
+    "use_policy": "Usable as explicitly assumed farmer soil inputs in sensitivity/demo calculations only. Compare with retrieved SoilGrids; never label these values SoilGrids or measured evidence."
+  },
+  "management": {
+    "tillage": {
+      "type": "minimum_till",
+      "typical_depth": {
+        "value": 12,
+        "unit": "cm"
+      }
+    },
+    "residue": {
+      "cover_class": "30-60%",
+      "assumed_cover": {
+        "value": 45,
+        "unit": "percent"
+      },
+      "removed_after_harvest": false
+    },
+    "support_practices": {
+      "contouring": false,
+      "strip_cropping": false,
+      "terraces": false,
+      "grassed_waterways": false,
+      "note": "No documented support practice in this fictional baseline; any P=1 assignment belongs to the validated method, not a farmer measurement."
+    },
+    "erosion_observations": {
+      "status": "synthetic",
+      "sheet_wash": "minor surface wash after an assumed heavy rain event in spring 2024",
+      "rills": "none reported in fictional scenario",
+      "gullies": "none reported in fictional scenario",
+      "dust": "occasional windblown dust in dry summers; not a quantified erosion measurement"
+    },
+    "fallow": {
+      "allowed": [
+        "mulch_fallow"
+      ],
+      "weed_control": "mechanical or approved herbicide as needed in fictional scenario",
+      "residue_management": "retain crop residues; avoid bare black fallow",
+      "cover_crop_termination": null
+    },
+    "shelterbelts": {
+      "present": true,
+      "condition": "partial gaps in fictional northern shelterbelt"
+    },
+    "terrain_observations": {
+      "description": "gently sloping, no reported waterlogging or flooding in fictional scenario",
+      "slope_degrees": null,
+      "note": "Slope and LS must come from terrain processing; the preliminary specification values are not inserted as verified inputs."
+    },
+    "fertilizer": {
+      "annual_assumed_nutrients": [
+        {
+          "nutrient": "N",
+          "amount": {
+            "value": 60,
+            "unit": "kg/ha"
+          }
+        },
+        {
+          "nutrient": "P2O5",
+          "amount": {
+            "value": 30,
+            "unit": "kg/ha"
+          }
+        },
+        {
+          "nutrient": "K2O",
+          "amount": {
+            "value": 20,
+            "unit": "kg/ha"
+          }
+        }
+      ],
+      "note": "Fictional typical inputs, not fertilizer advice. Included within variable-cost assumptions; do not add them twice."
+    },
+    "disease_pests": {
+      "known_active_outbreaks": [],
+      "history": "No diagnosed outbreak in fictional scenario; repeated sunflower is a disease-return warning, not evidence of no disease."
+    }
+  },
+  "economics": {
+    "status": "synthetic",
+    "currency": "UAH",
+    "price_year": 2025,
+    "cost_year": 2025,
+    "annual_budget": {
+      "value": 20000,
+      "unit": "UAH/ha"
+    },
+    "budget_class": "medium",
+    "crop_assumptions": {
+      "winter_wheat": {
+        "yield": {
+          "value": 3,
+          "unit": "t/ha"
+        },
+        "price": {
+          "value": 8000,
+          "unit": "UAH/t"
+        },
+        "variable_cost": {
+          "value": 17000,
+          "unit": "UAH/ha"
+        },
+        "harvested": true
+      },
+      "winter_barley": {
+        "yield": {
+          "value": 2.8,
+          "unit": "t/ha"
+        },
+        "price": {
+          "value": 7200,
+          "unit": "UAH/t"
+        },
+        "variable_cost": {
+          "value": 15000,
+          "unit": "UAH/ha"
+        },
+        "harvested": true
+      },
+      "winter_rye": {
+        "yield": {
+          "value": 2.6,
+          "unit": "t/ha"
+        },
+        "price": {
+          "value": 6500,
+          "unit": "UAH/t"
+        },
+        "variable_cost": {
+          "value": 13000,
+          "unit": "UAH/ha"
+        },
+        "harvested": true
+      },
+      "peas": {
+        "yield": {
+          "value": 1.8,
+          "unit": "t/ha"
+        },
+        "price": {
+          "value": 11000,
+          "unit": "UAH/t"
+        },
+        "variable_cost": {
+          "value": 14000,
+          "unit": "UAH/ha"
+        },
+        "harvested": true
+      },
+      "chickpea": {
+        "yield": {
+          "value": 1.6,
+          "unit": "t/ha"
+        },
+        "price": {
+          "value": 18000,
+          "unit": "UAH/t"
+        },
+        "variable_cost": {
+          "value": 16000,
+          "unit": "UAH/ha"
+        },
+        "harvested": true
+      },
+      "oil_flax": {
+        "yield": {
+          "value": 1.2,
+          "unit": "t/ha"
+        },
+        "price": {
+          "value": 17000,
+          "unit": "UAH/t"
+        },
+        "variable_cost": {
+          "value": 13000,
+          "unit": "UAH/ha"
+        },
+        "harvested": true
+      },
+      "millet": {
+        "yield": {
+          "value": 2.2,
+          "unit": "t/ha"
+        },
+        "price": {
+          "value": 7500,
+          "unit": "UAH/t"
+        },
+        "variable_cost": {
+          "value": 12000,
+          "unit": "UAH/ha"
+        },
+        "harvested": true
+      },
+      "grain_sorghum": {
+        "yield": {
+          "value": 3.4,
+          "unit": "t/ha"
+        },
+        "price": {
+          "value": 6500,
+          "unit": "UAH/t"
+        },
+        "variable_cost": {
+          "value": 13000,
+          "unit": "UAH/ha"
+        },
+        "harvested": true
+      },
+      "mulch_fallow": {
+        "yield": {
+          "value": 0,
+          "unit": "t/ha"
+        },
+        "price": {
+          "value": 0,
+          "unit": "UAH/t"
+        },
+        "variable_cost": {
+          "value": 4500,
+          "unit": "UAH/ha"
+        },
+        "harvested": false
+      }
+    },
+    "market_access": "fictional local grain buyer; access assumed for included crops",
+    "discount_rate": {
+      "value": 5,
+      "unit": "percent/year"
+    },
+    "price_escalation": {
+      "value": 0,
+      "unit": "percent/year"
+    },
+    "use_policy": "Hold these illustrative yield/price/cost assumptions explicit. They support demo gross-margin arithmetic only, not predicted actual profit or climate-calibrated yield. No scenario probabilities are supplied.",
+    "fixed_costs": null,
+    "financing_costs": null
+  },
+  "operations": {
+    "available": [
+      "seeding",
+      "spraying",
+      "fertilizing",
+      "harvesting"
+    ],
+    "contractor_access": true,
+    "irrigation_equipment": false,
+    "input_purchasing_constraints": "none beyond assumed budget in fictional scenario",
+    "storage": {
+      "capacity": {
+        "value": 120,
+        "unit": "t"
+      },
+      "sale_policy": "temporary storage available; no assumed price premium"
+    },
+    "field_access": {
+      "status": "synthetic",
+      "restrictions": "none in fictional scenario; no assessment of real-world access or safety has been performed"
+    },
+    "ranking_policy": "Collect as farmer context; operational/business constraints are not numerical agronomic risk scores."
+  },
+  "consent": {
+    "test_fixture_authorized": true,
+    "real_person_consent": null,
+    "synthetic_profile_publication": true,
+    "synthetic_input_processing": true,
+    "optional_model_training": false,
+    "note": "The user authorized fictional showcase inputs. This is not consent from a real farmer. Collect actual consent before processing a real farmer’s information."
+  },
+  "feedback": {
+    "corrections": [],
+    "shared_update_policy": "Accepted corrections change the shared account profile, Personal info and next startup introduction. Affected computed results must be marked outdated until rerun."
+  },
+  "analysis_request": {
+    "historical_period": {
+      "start": "2016-01-01",
+      "end": "2025-12-31"
+    },
+    "datasets": [
+      "nasa_power",
+      "soilgrids",
+      "nasadem_srtm",
+      "gpm_imerg",
+      "hls"
+    ],
+    "compare_to_baseline": {
+      "description": "Synthetic 2023–2025 current-practice sequence: sunflower, sunflower, winter wheat, repeated over the comparison horizon under the same management assumptions. This is an adverse comparison baseline, not a feasible recommendation.",
+      "sequence": [
+        "sunflower",
+        "sunflower",
+        "winter_wheat"
+      ],
+      "repeat_to_horizon": true,
+      "status": "synthetic"
+    },
+    "required_outputs": [
+      "climate_features",
+      "crop_suitability",
+      "feasibility_checks",
+      "rotation_strategies",
+      "conditional_water_erosion",
+      "demo_gross_margin",
+      "provenance"
+    ],
+    "not_a_forecast": true
+  },
+  "external_data": {
+    "nasa_power": {
+      "status": "not_retrieved",
+      "values": null
+    },
+    "soilgrids": {
+      "status": "not_retrieved",
+      "values": null
+    },
+    "nasadem_srtm": {
+      "status": "not_retrieved",
+      "values": null
+    },
+    "gpm_imerg": {
+      "status": "not_retrieved",
+      "values": null
+    },
+    "hls": {
+      "status": "not_retrieved",
+      "values": null
+    }
+  },
+  "computed_outputs": {
+    "climate_features": null,
+    "suitability_scores": null,
+    "validated_rotations": null,
+    "rainfall_erosivity_r": null,
+    "soil_erodibility_k": null,
+    "terrain_ls": null,
+    "cover_c": null,
+    "practice_p": null,
+    "water_erosion": null,
+    "economic_results": null
+  },
+  "questionnaire_mapping": {
+    "Q01": "field",
+    "Q02": "irrigation",
+    "Q03": "crop_history",
+    "Q04": "crop_preferences",
+    "Q05": "planning",
+    "Q06": "soil",
+    "Q07": "management.tillage",
+    "Q08": "management.residue",
+    "Q09": "management.support_practices",
+    "Q10": "management.erosion_observations",
+    "Q11": "management.fallow",
+    "Q12": "management.shelterbelts",
+    "Q13": "management.terrain_observations",
+    "Q14": "crop_history.records",
+    "Q15": "economics",
+    "Q16": "soil.additional_properties",
+    "Q17": "management.disease_pests",
+    "Q18": "planning.priority",
+    "Q19": "consent",
+    "Q20": "feedback",
+    "Q21": "operations",
+    "Q22": "economics.annual_budget",
+    "Q23": "management.fertilizer",
+    "Q24": "operations.input_purchasing_constraints",
+    "Q25": "operations.storage",
+    "Q26": "operations.field_access"
+  },
+  "presentation": {
+    "accountName": "John",
+    "accountType": "Test account",
+    "location": "Kherson Oblast, Ukraine",
+    "areaHa": 30,
+    "water": "Rainfed — no irrigation (synthetic input)",
+    "cropHistory": "Sunflower (2023) → sunflower (2024) → winter wheat (2025); synthetic crop-year records",
+    "soil": "Loam with synthetic soil-test inputs; not laboratory measurements",
+    "source": "Technical specification v1.1 plus user-authorized synthetic farmer inputs in input_data/john_showcase.json",
+    "status": "Saved demonstration example — synthetic farmer inputs; API analysis pending",
+    "introduction": "Hi, I’m Soily! You’re exploring Croptato’s shared test account as John, our demonstration farmer in Kherson Oblast, Ukraine. His synthetic field is about 30 hectares and relies on rainfall. The assumed recent crops are sunflower in 2023 and 2024, then winter wheat in 2025. We’ve also supplied fictional loam-soil inputs, minimum tillage, 45% residue cover, and an eight-year plan for 2026–2033 with a balanced priority.\n\nExplore the saved example dashboard and Personal info without signing in. All farmer inputs, including yields, prices and costs, are demonstration assumptions; API data and calculated results are not supplied yet. Ask me about the inputs, missing evidence, crop choices, or what could change with different management. These examples are not validated farm recommendations.",
+    "strategies": [
+      {
+        "id": "economic",
+        "title": "Economic Potential",
+        "description": "Synthetic yields, prices and variable costs are provided for demonstration arithmetic. No gross-margin result, yield forecast or profit prediction has been calculated.",
+        "crops": [
+          "Chickpea",
+          "Winter wheat",
+          "Millet",
+          "Peas",
+          "Winter wheat",
+          "Grain sorghum",
+          "Winter barley",
+          "Oil flax"
+        ]
+      },
+      {
+        "id": "balanced",
+        "title": "Balanced",
+        "description": "Illustrative scenario combining crop diversity with one mulch-fallow year. Fallow has no saleable harvest.",
+        "crops": [
+          "Mulch fallow",
+          "Winter wheat",
+          "Chickpea",
+          "Winter barley",
+          "Millet",
+          "Peas",
+          "Winter wheat",
+          "Grain sorghum"
+        ]
+      },
+      {
+        "id": "resilience",
+        "title": "Climate & Soil Resilience",
+        "description": "Illustrative scenario emphasizing cool-season crops and residue-oriented management. Soil and moisture outcomes have not been calculated.",
+        "crops": [
+          "Mulch fallow",
+          "Winter wheat",
+          "Peas",
+          "Winter rye",
+          "Chickpea",
+          "Winter barley",
+          "Oil flax",
+          "Winter wheat"
+        ]
+      }
+    ],
+    "limitations": [
+      "All farmer inputs, field geometry, soil values, crop history and economics are explicitly synthetic; no lab, survey or actual farmer provided them.",
+      "The planning horizon is 2026–2033. Crop calendars, disease-return intervals, predecessors, and year 8 → year 1 continuity still require validation.",
+      "Historical climate analysis is requested for NASA POWER 2016–2025. API data has not been retrieved for this input dataset.",
+      "Crop scores, gross-margin results and soil-loss estimates have not been computed. Synthetic yield and financial inputs do not turn a demo calculation into a prediction."
+    ]
+  }
+}

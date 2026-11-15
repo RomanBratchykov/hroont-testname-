@@ -1,14 +1,14 @@
 import { useEffect, useRef } from 'react';
-import demo from '../../config/demo.json';
+import demo, { showcaseInputs } from '../../config/showcase';
 
 export function DemoDashboard({ onAsk }: { onAsk: (question: string) => void }) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { heading.current?.focus(); }, []);
   const download = () => {
-    const url = URL.createObjectURL(new Blob([JSON.stringify(demo, null, 2)], { type: 'application/json' }));
+    const url = URL.createObjectURL(new Blob([JSON.stringify(showcaseInputs, null, 2)], { type: 'application/json' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'croptato-john-demo-dashboard.json';
+    link.download = 'croptato-john-showcase-inputs.json';
     link.click();
     URL.revokeObjectURL(url);
   };

@@ -1,0 +1,38 @@
+{
+  "type": "Feature",
+  "properties": {
+    "id": "john-field-1",
+    "name": "John’s demonstration field",
+    "status": "synthetic",
+    "declared_area_ha": 30,
+    "verified_boundary": false,
+    "construction": "Synthetic rectangle centered on pilot coordinates, approximately 30 ha using a spherical Earth construction. Recalculate ellipsoidal/projected area in the field-validation pipeline. This is not a cadastral boundary."
+  },
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          32.70550556,
+          46.74663711
+        ],
+        [
+          32.71269444,
+          46.74663711
+        ],
+        [
+          32.71269444,
+          46.75156289
+        ],
+        [
+          32.70550556,
+          46.75156289
+        ],
+        [
+          32.70550556,
+          46.74663711
+        ]
+      ]
+    ]
+  }
+}

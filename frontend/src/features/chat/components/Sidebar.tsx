@@ -1,4 +1,4 @@
-import demo from '../../../config/demo.json';
+import demo from '../../../config/showcase';
 import { useState } from 'react';
 import { Logo } from '../../../components/Logo';
 import { Icon } from '../../../components/Icon';

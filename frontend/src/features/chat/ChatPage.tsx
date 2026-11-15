@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import demo from '../../config/demo.json';
+import demo from '../../config/showcase';
 import { DemoDashboard } from '../personal-state/DemoDashboard';
 import { UserAvatar } from '../../components/UserAvatar';
 import { Icon } from '../../components/Icon';
