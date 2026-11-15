@@ -2,6 +2,8 @@
 
 import argparse
 import os
+import platform
+import re
 import shutil
 import signal
 import socket
@@ -63,52 +65,131 @@ def environment() -> dict[str, str]:
     return env
 
 
+def select_provider(
+    env: dict[str, str], provider: str | None, model: str | None
+) -> None:
+    selected = provider or env.get("MODEL_PROVIDER") or "deepseek"
+    if selected not in {"ollama", "deepseek"}:
+        raise SystemExit("MODEL_PROVIDER must be ollama or deepseek.")
+    env["MODEL_PROVIDER"] = selected
+    key, default = (
+        ("OLLAMA_MODEL", "qwen3.5:4b")
+        if selected == "ollama"
+        else ("DEEPSEEK_MODEL", "deepseek-flash")
+    )
+    env["MODEL_NAME"] = model or env.get(key) or default
+
+
+def ensure_env_file() -> None:
+    destination = ROOT / ".env"
+    try:
+        with open(
+            destination,
+            "x",
+            encoding="utf-8",
+            opener=lambda path, flags: os.open(path, flags, 0o600),
+        ) as handle:
+            handle.write((ROOT / ".env.example").read_text(encoding="utf-8"))
+    except FileExistsError:
+        pass
+
+
+def torch_install_args(system: str) -> list[str]:
+    args = ["torch>=2.6,<3"]
+    if system in {"Linux", "Windows"}:
+        args += ["--index-url", "https://download.pytorch.org/whl/cpu"]
+    return args
+
+
+def runtime_checks() -> tuple[str, str]:
+    if sys.version_info < (3, 12):
+        raise SystemExit(
+            "Python 3.12+ is required. Recreate .venv after installing a supported Python."
+        )
+    node, npm = shutil.which("node"), _npm_cmd()
+    if not node or not npm:
+        raise SystemExit("Install Node.js 22.18+ or 24+ with npm, then rerun --setup.")
+    version = subprocess.run(
+        [node, "--version"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    parts = tuple(int(part) for part in re.findall(r"\d+", version)[:2])
+    if not (parts >= (24, 0) or (22, 18) <= parts < (23, 0)):
+        raise SystemExit("Node.js 22.18+ (22.x) or 24+ is required.")
+    return node, npm
+
+
+def database_prerequisites(env: dict[str, str]) -> bool:
+    docker = _docker_cmd()
+    if docker:
+        compose = subprocess.run(
+            [docker, "compose", "version"], capture_output=True, check=False
+        )
+        daemon = subprocess.run([docker, "info"], capture_output=True, check=False)
+        if compose.returncode == daemon.returncode == 0:
+            return True
+    endpoints = (
+        (env.get("DATABASE_URL", "postgresql://localhost:5432/kherson_crop_db"), 5432),
+        (env.get("QDRANT_URL", "http://localhost:6333"), 6333),
+    )
+    return all(
+        _port_open(urlparse(url).hostname or "localhost", urlparse(url).port or port)
+        for url, port in endpoints
+    )
+
+
+def doctor() -> int:
+    print(
+        f"Platform: {platform.system()} {platform.machine()}; Python: {platform.python_version()}"
+    )
+    print(f"Disk free: {shutil.disk_usage(ROOT).free / 1024**3:.1f} GiB")
+    try:
+        memory = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+        print(f"Physical memory: {memory / 1024**3:.1f} GiB")
+    except (AttributeError, OSError, ValueError):
+        print("Physical memory: unavailable on this platform")
+    try:
+        runtime_checks()
+        runtime_ok = True
+        print("Python/Node/npm: supported")
+    except (SystemExit, OSError, subprocess.CalledProcessError) as exc:
+        runtime_ok = False
+        print(f"Runtime prerequisite: {exc}")
+    stores_ok = database_prerequisites(environment())
+    print(
+        f"Docker Compose with running daemon, or reachable configured databases: {stores_ok}"
+    )
+    print(f"Project virtual environment: {PYTHON.exists()}")
+    return 0 if runtime_ok and stores_ok and PYTHON.exists() else 1
+
+
 def setup() -> None:
+    _, npm = runtime_checks()
+    ensure_env_file()
+    if not database_prerequisites(environment()):
+        raise SystemExit(
+            "Start Docker Desktop/Engine with Compose, or provide running PostgreSQL and Qdrant at the configured localhost URLs. See docs/setup.md. Dependencies were not installed."
+        )
     if not PYTHON.exists():
         try:
             venv.EnvBuilder(with_pip=True).create(VENV_DIR)
         except (subprocess.CalledProcessError, OSError) as exc:
             raise SystemExit(
-                "Python venv/pip is unavailable. On Linux Mint install python3-venv, then rerun --setup."
+                "Python venv/pip is unavailable. Install your OS Python venv package (python3-venv on Debian/Ubuntu), then rerun --setup."
             ) from exc
-    check = subprocess.run(
-        [str(PYTHON), "-m", "pip", "--version"], check=False, capture_output=True
-    )
-    if check.returncode:
-        raise SystemExit(
-            "The .venv has no pip. Install python3-venv and run python -m ensurepip, then rerun --setup."
-        )
     subprocess.run(
-        [
-            str(PYTHON),
-            "-m",
-            "pip",
-            "install",
-            "torch",
-            "--index-url",
-            "https://download.pytorch.org/whl/cpu",
-        ],
+        [str(PYTHON), "-m", "pip", "install", *torch_install_args(platform.system())],
         check=True,
         cwd=ROOT,
     )
-    pip_args = [
-        str(PYTHON),
-        "-m",
-        "pip",
-        "install",
-        "-r",
-        str(ROOT / "backend/requirements.lock.txt"),
-    ]
-    rag_req = ROOT / "RAG/requirements.txt"
-    if rag_req.exists():
-        pip_args.extend(["-r", str(rag_req)])
-    subprocess.run(pip_args, check=True, cwd=ROOT)
-
-    npm = _npm_cmd()
-    if not npm:
-        raise SystemExit("npm is required to install frontend dependencies.")
+    subprocess.run(
+        [str(PYTHON), "-m", "pip", "install", "-r", str(ROOT / "requirements.txt")],
+        check=True,
+        cwd=ROOT,
+    )
     subprocess.run([npm, "ci"], check=True, cwd=ROOT / "frontend")
-    print("Setup complete. Run ./run.sh (or .\\run.ps1 on Windows) to start the app.")
+    print(
+        "Dependencies installed. Configure .env credentials/rates, then run ./run.sh (or .\\run.ps1). Database contents and embedding model downloads are prepared separately; see docs/setup.md."
+    )
 
 
 def _prepare_rag_services(env: dict[str, str], force_ingest: bool) -> bool:
@@ -191,6 +272,9 @@ def main() -> int:
     parser.add_argument(
         "--setup", action="store_true", help="Install dependencies, then exit."
     )
+    parser.add_argument(
+        "--doctor", action="store_true", help="Read-only local prerequisite report."
+    )
     parser.add_argument("--provider", choices=["ollama", "deepseek"])
     parser.add_argument(
         "--model", help="Exact installed Ollama model tag or DeepSeek model ID."
@@ -234,15 +318,14 @@ def main() -> int:
         parser.error("--rag-port must be between 1024 and 65535")
     if args.rag_port == args.port:
         parser.error("--rag-port must differ from --port")
+    if args.doctor:
+        return doctor()
     if args.setup:
         setup()
         return 0
 
     env = environment()
-    if args.provider:
-        env["MODEL_PROVIDER"] = args.provider
-    if args.model:
-        env["MODEL_NAME"] = args.model
+    select_provider(env, args.provider, args.model)
     if args.phase:
         env["BUDGET_PHASE"] = args.phase
 

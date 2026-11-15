@@ -26,6 +26,9 @@ class _FakeVector:
     def tolist(self) -> list[float]:
         return self._values
 
+    def __len__(self) -> int:
+        return len(self._values)
+
 
 class _FakeEmbedder:
     def encode(self, text: str, show_progress_bar: bool = False) -> _FakeVector:
@@ -44,7 +47,12 @@ class _FakeQdrantClient:
         return self._exists and collection_name == "agronomy_knowledge"
 
     def get_collection(self, collection_name: str) -> SimpleNamespace:
-        return SimpleNamespace(points_count=len(self._points))
+        return SimpleNamespace(
+            points_count=len(self._points),
+            config=SimpleNamespace(
+                params=SimpleNamespace(vectors=SimpleNamespace(size=3))
+            ),
+        )
 
     def query_points(self, **kwargs) -> SimpleNamespace:
         self.last_query_kwargs = kwargs
@@ -236,6 +244,7 @@ def test_llm_service_handles_unreachable_deepseek_gracefully(monkeypatch):
 
 
 def test_rag_fastapi_retrieval_health_and_model_route_boundary(monkeypatch):
+    monkeypatch.setattr(rag_main, "warm_embeddings", lambda: None)
     monkeypatch.setattr(
         rag_main,
         "check_qdrant_status",

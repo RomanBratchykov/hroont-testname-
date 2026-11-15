@@ -285,3 +285,131 @@ def test_bounded_evidence_preserves_spatial_temporal_scope():
     assert result["chunks"][0]["region"] == "Kherson"
     assert result["chunks"][0]["start_year"] == 2016
     assert result["chunks"][0]["end_year"] == 2025
+
+
+def test_sql_sample_counts_and_provenance_survive_bounds():
+    from backend.tools import _bound_rag_payload
+
+    payload = {
+        "status": "available",
+        "sql_data": [
+            {
+                "table": "weather",
+                "row_count": 8,
+                "row_count_is_sample": True,
+                "source_file": "weather.csv",
+                "region": "Kherson",
+                "sample_rows": [{"year": year} for year in range(2016, 2024)],
+                "columns": ["year"],
+            }
+        ],
+    }
+    result = _bound_rag_payload(payload)
+    entry = result["sql_data"][0]
+    assert entry["row_count_is_sample"] is True
+    assert (
+        entry["row_count"]
+        == entry["sample_row_count"]
+        == len(entry["sample_rows"])
+        == 5
+    )
+    assert entry["population_row_count"] is None
+    assert entry["source_file"] == "weather.csv"
+    assert entry["region"] == "Kherson"
+
+
+def test_sql_counts_update_when_byte_budget_drops_rows():
+    from backend.tools import _bound_rag_payload
+
+    result = _bound_rag_payload(
+        {
+            "status": "available",
+            "sql_data": [
+                {
+                    "table": "weather",
+                    "row_count": 50,
+                    "sample_rows": [{"value": "x" * 150} for _ in range(5)],
+                }
+            ],
+        },
+        max_bytes=650,
+    )
+    entry = result["sql_data"][0]
+    assert len(entry["sample_rows"]) < 5
+    assert entry["row_count"] == entry["sample_row_count"] == len(entry["sample_rows"])
+    assert entry["population_row_count"] == 50
+    assert result["truncated"] is True
+    assert result["status"] == "partial"
+    assert len(json.dumps(result, ensure_ascii=False).encode()) <= 650
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "status": "available",
+            "chunks": [{"source_file": "x" * 2000, "text": "evidence", "score": 1}],
+        },
+        {
+            "status": "available",
+            "sql_data": [
+                {
+                    "table": "x" * 2000,
+                    "row_count": 1,
+                    "sample_rows": [{"value": "x" * 2000}],
+                }
+            ],
+        },
+        {"status": "available", "sources": {"vector": {"metadata": "x" * 2000}}},
+    ],
+)
+def test_oversized_required_metadata_has_bounded_explicit_failure(payload):
+    from backend.tools import _bound_rag_payload
+
+    result = _bound_rag_payload(payload, max_bytes=400)
+    assert len(json.dumps(result, ensure_ascii=False).encode()) <= 400
+    assert result["status"] == "unavailable"
+    assert result["truncated"] is True
+
+
+def test_ollama_context_window_is_explicit_and_cloud_wire_unchanged(monkeypatch):
+    import asyncio
+
+    monkeypatch.setenv("OLLAMA_CONTEXT_TOKENS", "24576")
+    config = Settings.from_env()
+    assert config.ollama_context_tokens == 24576
+    assert Settings().ollama_context_tokens == 16384
+    for value in (0, -1, 262145):
+        with pytest.raises(ValueError):
+            Settings(ollama_context_tokens=value)
+
+    async def run(provider):
+        bodies = []
+
+        def upstream(request):
+            bodies.append(json.loads(request.content))
+            response = (
+                {"message": {"role": "assistant", "content": "ok"}, "done": True}
+                if provider == "ollama"
+                else {
+                    "choices": [
+                        {
+                            "message": {"role": "assistant", "content": "ok"},
+                            "finish_reason": "stop",
+                        }
+                    ]
+                }
+            )
+            return httpx.Response(200, json=response)
+
+        settings = Settings(
+            provider=provider, api_key="offline-test", ollama_context_tokens=24576
+        )
+        async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
+            await Provider(settings, client).complete(
+                [{"role": "user", "content": "hello"}], [], False
+            )
+        return bodies[0]
+
+    assert asyncio.run(run("ollama"))["options"]["num_ctx"] == 24576
+    assert "options" not in asyncio.run(run("deepseek"))

@@ -58,7 +58,7 @@ To use a local DeepSeek model (e.g., `deepseek-r1:8b` via Ollama's OpenAI-compat
 ./run.sh --provider deepseek --model deepseek-r1:8b
 ```
 
-When starting in full mode (default or `--dev`), the launcher automatically brings up `RAG/docker-compose.yml` (PostgreSQL + Qdrant), runs `RAG/scripts/ingest_data.py --if-empty` if databases are empty, starts the RAG FastAPI service on port `8001` (`--rag-port`), and wires `RAG_URL` into the main backend (`--no-rag` disables this; `--with-rag` enables it with `--backend-only`; `--ingest` forces re-ingestion).
+The launcher defaults to the DeepSeek API; use `--provider ollama` for local inference. Full mode starts RAG on port 8001 and uses Docker Compose or existing local PostgreSQL/Qdrant services. Indexing is explicit and resumable: add `--ingest` and monitor `RAG/ingestion.log`. `--no-rag` disables retrieval; `--with-rag` enables it with `--backend-only`. See [portable setup](docs/setup.md) for dependencies and `--doctor`.
 
 Testing has a **$3** limit. To use the separate **$2 demo** allowance:
 
@@ -138,9 +138,13 @@ Provider formats follow the official [Ollama chat API](https://docs.ollama.com/a
 
 ## Start Croptato automatically
 
-`scripts/croptato.service` is the user service for this PC. It runs the built app on port 5173,
-reads the provider/model from `.env`, and restarts after a failure. Its PATH includes this PC’s Node installation.
-Ollama and Cloudflared are separate system services. User lingering must be enabled to start before login.
+Generate Linux startup units using `scripts/install_startup.py`; it discovers this checkout’s Python and Node paths. It serves the built app on port 5173 and can install user-owned native database units on this PC. Docker is the portable database option on a fresh laptop. Enable user lingering for startup before login. Ollama and Cloudflared remain separate services.
+
+```bash
+.venv/bin/python scripts/install_startup.py --native-databases --provider ollama --start
+```
+
+For hosted DeepSeek, configure the private `.env` key and both current per-million-token rates, then run the installer with `--provider deepseek --start`. The current PC stays explicitly on Ollama until those credentials exist.
 
 ```bash
 systemctl --user status croptato.service

@@ -165,6 +165,18 @@ def _validate_readonly_sql(sql_query: str) -> str:
     return stripped
 
 
+def _year_expression(quoted_column: str, dialect: str) -> str:
+    """Normalize nullable imported year columns without interpreting unknowns as zero."""
+    value = f"CAST({quoted_column} AS TEXT)"
+    if dialect == "postgresql":
+        valid = f"{value} ~ '^[0-9]{{4}}([.]0+)?$'"
+        converted = f"CAST(CAST({value} AS NUMERIC) AS INTEGER)"
+    else:
+        valid = f"({value} GLOB '[0-9][0-9][0-9][0-9]' OR {value} GLOB '[0-9][0-9][0-9][0-9].0')"
+        converted = f"CAST({value} AS INTEGER)"
+    return f"CASE WHEN {valid} THEN {converted} ELSE NULL END"
+
+
 class PostgresHelper:
     """Lazy-initialized read-only query helper over PostgreSQL crop/soil tables."""
 
@@ -305,7 +317,7 @@ class PostgresHelper:
             return []
 
         try:
-            schemas = self.get_table_schemas(max_tables=100)
+            schemas = self.get_table_schemas(max_tables=500)
             if not schemas:
                 return []
 
@@ -413,12 +425,12 @@ class PostgresHelper:
                             continue
                         if start_year is not None:
                             conditions.append(
-                                f"{preparer.quote_identifier(last)} >= :start_year"
+                                f"{_year_expression(preparer.quote_identifier(last), engine.dialect.name)} >= :start_year"
                             )
                             params["start_year"] = start_year
                         if end_year is not None:
                             conditions.append(
-                                f"{preparer.quote_identifier(first)} <= :end_year"
+                                f"{_year_expression(preparer.quote_identifier(first), engine.dialect.name)} <= :end_year"
                             )
                             params["end_year"] = end_year
                     where = " WHERE " + " AND ".join(conditions) if conditions else ""

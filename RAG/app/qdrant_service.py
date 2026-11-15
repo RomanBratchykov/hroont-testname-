@@ -60,6 +60,8 @@ class QdrantRetriever:
         self._client: QdrantClient | None = None
         self._model: SentenceTransformer | None = None
         self._lock = threading.Lock()
+        self._embedding_dimension: int | None = None
+        self._embedding_failed = False
 
     @property
     def qdrant_url(self) -> str:
@@ -81,14 +83,39 @@ class QdrantRetriever:
 
     def get_model(self) -> SentenceTransformer:
         with self._lock:
-            if self._model is None:
-                logger.info(
-                    "Loading embedding model '%s'...", self.embedding_model_name
+            if self._embedding_failed:
+                raise RuntimeError(
+                    "Embedding model unavailable; restart after repairing configuration"
                 )
-                self._model = SentenceTransformer(
-                    self.embedding_model_name, device="cpu"
-                )
-            return self._model
+            try:
+                if self._model is None:
+                    self._model = SentenceTransformer(
+                        self.embedding_model_name, device="cpu"
+                    )
+                if self._embedding_dimension is None:
+                    # A real CPU encoding verifies weights and execution, not just configuration.
+                    probe = self._model.encode("agronomy", show_progress_bar=False)
+                    self._embedding_dimension = len(probe)
+                    if not self._embedding_dimension:
+                        raise ValueError("Empty embedding")
+                return self._model
+            except Exception:
+                self._embedding_failed = True
+                raise
+
+    def warm_embeddings(self) -> None:
+        try:
+            self.get_model()
+        except Exception as exc:  # noqa: BLE001 — expose failed model startup as unavailable.
+            logger.warning("Embedding warmup failed (%s)", type(exc).__name__)
+
+    @staticmethod
+    def _collection_dimension(info: Any) -> int | None:
+        vectors = getattr(
+            getattr(getattr(info, "config", None), "params", None), "vectors", None
+        )
+        # Named-vector collections are unsupported by this unnamed-vector retriever.
+        return getattr(vectors, "size", None) if not isinstance(vectors, dict) else None
 
     def check_status(self) -> dict[str, Any]:
         collection = self.collection_name
@@ -96,8 +123,10 @@ class QdrantRetriever:
             client = self.get_client()
             exists = bool(client.collection_exists(collection))
             points_count = 0
+            dimension = None
             if exists:
                 info = client.get_collection(collection)
+                dimension = self._collection_dimension(info)
                 points_count = int(getattr(info, "points_count", 0) or 0)
                 if hasattr(client, "count"):
                     points_count = int(
@@ -114,11 +143,28 @@ class QdrantRetriever:
                             exact=True,
                         ).count
                     )
+            state = (
+                "missing" if not exists else "empty" if not points_count else "ready"
+            )
+            reason = None
+            if state == "ready":
+                if self._embedding_failed:
+                    state, reason = "unavailable", "embedding_unavailable"
+                elif self._embedding_dimension is None:
+                    state = "warming"
+                elif dimension != self._embedding_dimension:
+                    state, reason = "unavailable", "embedding_dimension_mismatch"
             return {
                 "connected": True,
-                "state": "missing"
-                if not exists
-                else ("ready" if points_count else "empty"),
+                "embedding_state": "unavailable"
+                if self._embedding_failed
+                else "ready"
+                if self._embedding_dimension
+                else "warming",
+                "embedding_dimension": self._embedding_dimension,
+                "collection_dimension": dimension,
+                "reason": reason,
+                "state": state,
                 "url": self.qdrant_url,
                 "collection": collection,
                 "exists": exists,
@@ -158,6 +204,9 @@ class QdrantRetriever:
                 return []
 
             model = self.get_model()
+            dimension = self._collection_dimension(client.get_collection(collection))
+            if dimension != self._embedding_dimension:
+                raise RuntimeError("Collection and embedding dimensions differ")
             vector = model.encode(query.strip(), show_progress_bar=False)
             query_vector = (
                 vector.tolist() if hasattr(vector, "tolist") else list(vector)
@@ -279,3 +328,8 @@ def retrieve_chunks(
         start_year=start_year,
         end_year=end_year,
     )
+
+
+def warm_embeddings() -> None:
+    """Load and verify the configured CPU embedder once per service process."""
+    _default_retriever.warm_embeddings()

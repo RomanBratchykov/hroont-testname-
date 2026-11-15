@@ -129,7 +129,10 @@ class Provider:
                 "messages": messages,
                 "stream": False,
                 "think": thinking,
-                "options": {"num_predict": config.output_tokens(thinking)},
+                "options": {
+                    "num_predict": config.output_tokens(thinking),
+                    "num_ctx": config.ollama_context_tokens,
+                },
             }
             headers = {}
         if tools:

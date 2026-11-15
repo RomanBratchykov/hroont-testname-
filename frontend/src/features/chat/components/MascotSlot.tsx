@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { Mascot } from '../../../components/Mascot';
+import type { MascotStatus } from '../../../components/Mascot';
 export interface MascotContext {
-    status: 'idle' | 'composing' | 'conversation' | 'thinking';
+    status: MascotStatus;
 }
 export type MascotRenderer = (context: MascotContext) => ReactNode;
 /** Keep custom renderers optional while supplying Soily in every normal run mode. */

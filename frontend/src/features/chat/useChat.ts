@@ -27,6 +27,7 @@ export function useChat() {
     const [storageError, setStorageError] = useState(false);
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
+    const [finalizedMessageId, setFinalizedMessageId] = useState<string | null>(null);
     const [revealingMessageId, setRevealingMessageId] = useState<string | null>(null);
     const [connectionAttempt, setConnectionAttempt] = useState(0);
     const retry = () => { setError(''); setConnectionAttempt(value => value + 1); };
@@ -68,7 +69,7 @@ export function useChat() {
     }, []);
 
     const dispatch = (action: ChatAction) => {
-        if (['new', 'select', 'delete'].includes(action.type)) setRevealingMessageId(null);
+        if (['new', 'select', 'delete'].includes(action.type)) { setRevealingMessageId(null); setFinalizedMessageId(null); }
         if (!connected || !['select', 'delete', 'rename', 'new'].includes(action.type)) { apply(action); return; }
         if (action.type !== 'rename') { controller.current?.abort(); historyController.current?.abort(); setEvidence([]); }
         if (action.type === 'new') { apply(action); setStatus(null); return; }
@@ -91,7 +92,7 @@ export function useChat() {
         controller.current = abort;
         const chat = latest.current.activeId ?? crypto.randomUUID();
         const request = crypto.randomUUID();
-        setBusy(true); setError(''); setEvidence([]);
+        setBusy(true); setError(''); setEvidence([]); setFinalizedMessageId(null);
         setStatus({ type: 'status', stage: 'preparing', message: 'Reading input…' });
         try {
             const encoded = await encodeFiles(files);
@@ -107,6 +108,7 @@ export function useChat() {
                 if (event.type === 'error') { setStatus(null); setError(event.message ?? 'Processing failed.'); }
                 if (event.type === 'answer') {
                     setRevealingMessageId(`${request}:answer`);
+                    setFinalizedMessageId(event.status === 'partial' ? null : `${request}:answer`);
                     apply({ type: 'answer', conversationId: chat, messageId: `${request}:answer`, text: event.content!, now: Date.now() });
                     setEvidence(event.evidence ?? []); setStatus(null);
                 }
@@ -120,10 +122,10 @@ export function useChat() {
         controller.current?.abort(); historyController.current?.abort();
         try {
             if (connected) await command({ action: 'clear' });
-            apply({ type: 'replace', state: initialState }); setStatus(null); setEvidence([]); setError('');
+            apply({ type: 'replace', state: initialState }); setFinalizedMessageId(null); setStatus(null); setEvidence([]); setError('');
         } catch (reason) { showError(reason); }
     };
     const conversation = state.conversations.find(c => c.id === state.activeId);
-    return { state, dispatch, revealingMessageId, conversation, storageError, connected, busy, ready, retry, error, reportError: setError, status, evidence, stop, clear,
+    return { state, dispatch, revealingMessageId, finalizedMessageId, conversation, storageError, connected, busy, ready, retry, error, reportError: setError, status, evidence, stop, clear,
         draft: state.drafts[state.activeId ?? 'new'] ?? '', send };
 }

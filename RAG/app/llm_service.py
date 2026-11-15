@@ -40,7 +40,10 @@ def get_openai_base_url() -> str:
     explicit = os.getenv("OPENAI_BASE_URL", "").strip()
     if explicit:
         return explicit
-    ollama = os.getenv("OLLAMA_URL", "http://localhost:11434").strip() or "http://localhost:11434"
+    ollama = (
+        os.getenv("OLLAMA_URL", "http://localhost:11434").strip()
+        or "http://localhost:11434"
+    )
     return ollama.rstrip("/") + "/v1"
 
 
@@ -64,7 +67,11 @@ def strip_think_tags(text: str) -> tuple[str, str | None]:
     """Separate DeepSeek <think>...</think> reasoning blocks from the final visible answer."""
     if not text:
         return "", None
-    thoughts = [match.group(1).strip() for match in _THINK_BLOCK_RE.finditer(text) if match.group(1).strip()]
+    thoughts = [
+        match.group(1).strip()
+        for match in _THINK_BLOCK_RE.finditer(text)
+        if match.group(1).strip()
+    ]
     cleaned = _THINK_BLOCK_RE.sub("", text)
     if "<think>" in cleaned.lower():
         unclosed = _UNCLOSED_THINK_RE.search(cleaned)
@@ -77,7 +84,9 @@ def strip_think_tags(text: str) -> tuple[str, str | None]:
     return cleaned.strip(), reasoning
 
 
-def format_rag_context(chunks: list[dict[str, Any]], sql_data: list[dict[str, Any]]) -> str:
+def format_rag_context(
+    chunks: list[dict[str, Any]], sql_data: list[dict[str, Any]]
+) -> str:
     """Format retrieved vector chunks and PostgreSQL table samples into a bounded prompt section."""
     sections: list[str] = []
 
@@ -87,10 +96,14 @@ def format_rag_context(chunks: list[dict[str, Any]], sql_data: list[dict[str, An
             source = chunk.get("source_file", "unknown")
             score = chunk.get("score", 0.0)
             text = str(chunk.get("text", "")).strip()
-            chunk_lines.append(f"({idx}) [source: {source} | score: {score:.3f}]\n{text}")
+            chunk_lines.append(
+                f"({idx}) [source: {source} | score: {score:.3f}]\n{text}"
+            )
         sections.append("\n\n".join(chunk_lines))
     else:
-        sections.append("[Vector Knowledge Base]\nNo matching passages retrieved from Qdrant.")
+        sections.append(
+            "[Vector Knowledge Base]\nNo matching passages retrieved from Qdrant."
+        )
 
     if sql_data:
         sql_lines = ["[PostgreSQL Historical Crop & Soil Data]"]
@@ -107,12 +120,16 @@ def format_rag_context(chunks: list[dict[str, Any]], sql_data: list[dict[str, An
             )
         sections.append("\n\n".join(sql_lines))
     else:
-        sections.append("[PostgreSQL Historical Crop & Soil Data]\nNo relevant SQL tables retrieved.")
+        sections.append(
+            "[PostgreSQL Historical Crop & Soil Data]\nNo relevant SQL tables retrieved."
+        )
 
     return "\n\n---\n\n".join(sections)
 
 
-def _build_evidence(chunks: list[dict[str, Any]], sql_data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _build_evidence(
+    chunks: list[dict[str, Any]], sql_data: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     evidence: list[dict[str, Any]] = []
     for chunk in chunks:
         evidence.append(
@@ -168,7 +185,11 @@ def generate_rag_answer(
         for item in history[-10:]:
             role = item.get("role", "")
             content = item.get("content", "")
-            if role in {"user", "assistant"} and isinstance(content, str) and content.strip():
+            if (
+                role in {"user", "assistant"}
+                and isinstance(content, str)
+                and content.strip()
+            ):
                 messages.append({"role": role, "content": content.strip()})
 
     user_prompt = (
@@ -219,7 +240,9 @@ def generate_rag_answer(
             "evidence": evidence,
         }
     except Exception as exc:  # noqa: BLE001 — degrade gracefully when local DeepSeek server is unreachable.
-        logger.warning("Local DeepSeek call failed (%s, model=%s): %s", base_url, model_name, exc)
+        logger.warning(
+            "Local DeepSeek call failed (%s, model=%s): %s", base_url, model_name, exc
+        )
         fallback_lines = [
             f"Local DeepSeek inference at `{base_url}` (`{model_name}`) is currently unavailable ({type(exc).__name__}).",
         ]
@@ -228,7 +251,9 @@ def generate_rag_answer(
                 f"However, I retrieved {len(chunks)} vector passage(s) from Qdrant and {len(sql_data)} PostgreSQL table(s) for your query. See the attached evidence below."
             )
         else:
-            fallback_lines.append("Please verify that Ollama / your local DeepSeek server is running.")
+            fallback_lines.append(
+                "Please verify that Ollama / your local DeepSeek server is running."
+            )
         return {
             "answer": "\n\n".join(fallback_lines),
             "status": "partial",

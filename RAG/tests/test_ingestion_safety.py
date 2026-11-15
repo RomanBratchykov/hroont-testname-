@@ -135,3 +135,60 @@ def test_vector_partial_retry_uses_same_ids_and_only_marks_completion(
     ]
     assert chunks[0].payload["region"] == "kherson"
     assert chunks[0].payload["start_year"] is None
+
+
+def test_malformed_jsonl_fails_source_instead_of_completing_partial_text(tmp_path):
+    source = tmp_path / "broken.jsonl"
+    source.write_text('{"crop": "wheat"}\ninvalid json\n')
+    with pytest.raises(ValueError, match="line 2"):
+        ingest._extract_jsonl_text(source)
+
+
+def test_pdf_page_failure_fails_source(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    class Page:
+        def extract_text(self):
+            raise ValueError("unreadable page")
+
+    source = tmp_path / "broken.pdf"
+    source.write_bytes(b"%PDF")
+    monkeypatch.setattr(
+        ingest.pdfplumber,
+        "open",
+        lambda stream: nullcontext(SimpleNamespace(pages=[Page()])),
+    )
+    with pytest.raises(ValueError, match="page 1"):
+        ingest._extract_pdf_text(source)
+
+
+@pytest.mark.parametrize(
+    "suffix,extractor",
+    [(".jsonl", "_extract_jsonl_text"), (".pdf", "_extract_pdf_text")],
+)
+def test_parse_failure_never_writes_completion_and_is_retryable(
+    tmp_path, monkeypatch, suffix, extractor
+):
+    from unittest.mock import Mock
+
+    import numpy as np
+
+    model = Mock()
+    model.encode.return_value = np.ones((1, 384))
+    monkeypatch.setattr(ingest, "SentenceTransformer", lambda *args, **kwargs: model)
+    client = Mock()
+    client.collection_exists.return_value = True
+    client.retrieve.return_value = []
+    (tmp_path / ("source" + suffix)).write_text("source bytes")
+    monkeypatch.setattr(ingest, extractor, Mock(side_effect=ValueError("parse failed")))
+    with pytest.raises(RuntimeError, match="1 source"):
+        ingest.ingest_vector(client, tmp_path)
+    client.upsert.assert_not_called()
+    model.encode.assert_not_called()
+    monkeypatch.setattr(ingest, extractor, lambda path: "Recovered complete source")
+    ingest.ingest_vector(client, tmp_path)
+    assert client.upsert.call_count == 2
+    assert (
+        client.upsert.call_args.kwargs["points"][0].payload["ingestion_marker"] is True
+    )

@@ -44,6 +44,15 @@ class SqlQueryArgs(SourceFilters):
 
 def _bound_rag_payload(payload: dict, max_bytes: int = 13500) -> dict:
     """Trim retrieved chunks and SQL rows so tool results always stay within orchestrator bounds."""
+    minimum = {"status": "unavailable", "truncated": True}
+    if max_bytes < len(json.dumps(minimum).encode()):
+        raise ValueError("Payload budget cannot represent an explicit failure.")
+
+    def mark_truncated():
+        payload["truncated"] = True
+        if payload.get("status") == "available":
+            payload["status"] = "partial"
+
     chunks = payload.get("chunks")
     if isinstance(chunks, list):
         trimmed_chunks = []
@@ -53,6 +62,7 @@ def _bound_rag_payload(payload: dict, max_bytes: int = 13500) -> dict:
             text = str(item.get("text", ""))
             if len(text) > 1000:
                 text = text[:1000] + "..."
+                mark_truncated()
             trimmed_chunks.append(
                 {
                     "source_file": str(item.get("source_file", "unknown")),
@@ -73,30 +83,52 @@ def _bound_rag_payload(payload: dict, max_bytes: int = 13500) -> dict:
         for entry in sql_data:
             if not isinstance(entry, dict):
                 continue
+            rows = list(entry.get("sample_rows", []))
+            columns = list(entry.get("columns", []))
+            if len(rows) > 5 or len(columns) > 25:
+                mark_truncated()
+            population = entry.get("population_row_count")
+            if population is None and not entry.get("row_count_is_sample", False):
+                population = entry.get("row_count")
+            sample = rows[:5]
             trimmed_sql.append(
                 {
+                    **entry,
                     "table": str(entry.get("table", "unknown")),
-                    "row_count": int(entry.get("row_count", 0)),
-                    "columns": list(entry.get("columns", []))[:25],
-                    "sample_rows": list(entry.get("sample_rows", []))[:5],
+                    "row_count": len(sample),
+                    "row_count_is_sample": True,
+                    "sample_row_count": len(sample),
+                    "population_row_count": population,
+                    "columns": columns[:25],
+                    "sample_rows": sample,
                 }
             )
         payload["sql_data"] = trimmed_sql
 
     while len(json.dumps(payload, ensure_ascii=False).encode()) > max_bytes:
+        mark_truncated()
         if isinstance(payload.get("chunks"), list) and len(payload["chunks"]) > 1:
             payload["chunks"].pop()
         elif isinstance(payload.get("sql_data"), list) and len(payload["sql_data"]) > 1:
             payload["sql_data"].pop()
-        elif isinstance(payload.get("sql_data"), list) and payload["sql_data"]:
-            rows = payload["sql_data"][0].get("sample_rows", [])
-            if len(rows) > 1:
-                rows.pop()
-            else:
-                payload["sql_data"][0]["sample_rows"] = []
-                break
+        elif (
+            isinstance(payload.get("sql_data"), list)
+            and payload["sql_data"]
+            and payload["sql_data"][0]["sample_rows"]
+        ):
+            entry = payload["sql_data"][0]
+            entry["sample_rows"].pop()
+            entry["row_count"] = entry["sample_row_count"] = len(entry["sample_rows"])
         else:
-            break
+            failure = _unavailable(
+                "Evidence metadata exceeds the retrieval payload budget."
+            )
+            failure["truncated"] = True
+            return (
+                failure
+                if len(json.dumps(failure, ensure_ascii=False).encode()) <= max_bytes
+                else minimum
+            )
     return payload
 
 

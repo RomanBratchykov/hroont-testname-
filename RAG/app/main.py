@@ -3,15 +3,23 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, model_validator
 
 from .db import check_postgres_status, query_relevant_sql_data
-from .qdrant_service import check_qdrant_status, retrieve_chunks
+from .qdrant_service import check_qdrant_status, retrieve_chunks, warm_embeddings
 
-app = FastAPI(title="Croptato evidence retrieval", version="0.3.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await asyncio.to_thread(warm_embeddings)
+    yield
+
+
+app = FastAPI(title="Croptato evidence retrieval", version="0.3.0", lifespan=lifespan)
 
 
 class RetrieveRequest(BaseModel):
@@ -109,10 +117,14 @@ async def retrieve_evidence(payload: RetrieveRequest) -> dict[str, Any]:
         if not enabled:
             source["state"] = "disabled"
             return []
-        if source["state"] != "ready":
+        if source["state"] not in {"ready", "warming"}:
             return []
         try:
             rows = await asyncio.to_thread(fn, payload.query, **kwargs, **filters)
+            if name == "vector" and source["state"] == "warming":
+                source.update(
+                    _state(await asyncio.to_thread(check_qdrant_status), True)
+                )
             source["state"] = "ready" if rows else "no_match"
             source["matches"] = len(rows)
             return rows

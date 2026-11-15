@@ -39,6 +39,7 @@ def test_vector_metadata_filter_is_sent_and_enforced():
     calls = []
     retriever._client = SimpleNamespace(
         collection_exists=lambda _: True,
+        get_collection=lambda _: _ready_collection(),
         query_points=lambda **kw: (
             calls.append(kw)
             or SimpleNamespace(
@@ -155,3 +156,102 @@ def test_failed_query_is_not_reported_as_no_match(monkeypatch):
     assert response["sources"]["vector"]["state"] == "unavailable"
     assert response["sources"]["sql"]["state"] == "no_match"
     assert "private" not in str(response)
+
+
+def _ready_collection(size=2):
+    return SimpleNamespace(
+        points_count=3,
+        config=SimpleNamespace(
+            params=SimpleNamespace(vectors=SimpleNamespace(size=size))
+        ),
+    )
+
+
+def test_embedding_readiness_and_dimension_mismatch(monkeypatch):
+    from RAG.app import qdrant_service
+
+    retriever = QdrantRetriever()
+    retriever._client = SimpleNamespace(
+        collection_exists=lambda _: True,
+        get_collection=lambda _: _ready_collection(384),
+    )
+    assert retriever.check_status()["state"] == "warming"
+
+    def fail(*a, **kw):
+        raise OSError("model absent")
+
+    monkeypatch.setattr(qdrant_service, "SentenceTransformer", fail)
+    retriever.warm_embeddings()
+    assert retriever.check_status()["state"] == "unavailable"
+    assert retriever.check_status()["embedding_state"] == "unavailable"
+    good = QdrantRetriever()
+    good._client = retriever._client
+    good._model = SimpleNamespace(encode=lambda *a, **kw: [0.1, 0.2])
+    good.warm_embeddings()
+    assert good.check_status()["state"] == "unavailable"
+    assert good.check_status()["reason"] == "embedding_dimension_mismatch"
+
+
+def test_lifecycle_warms_embeddings_once(monkeypatch):
+    calls = []
+    monkeypatch.setattr(main, "warm_embeddings", lambda: calls.append("warm"))
+    monkeypatch.setattr(
+        main, "check_qdrant_status", lambda: {"connected": True, "state": "ready"}
+    )
+    monkeypatch.setattr(
+        main, "check_postgres_status", lambda: {"connected": True, "state": "ready"}
+    )
+    with TestClient(main.app) as client:
+        assert client.get("/health").json()["status"] == "available"
+        assert client.get("/health").json()["status"] == "available"
+    assert calls == ["warm"]
+
+
+def test_direct_retrieval_warms_without_lifespan(monkeypatch):
+    from RAG.app import qdrant_service
+
+    retriever = QdrantRetriever()
+    loads = []
+
+    def model(*a, **kw):
+        loads.append(kw)
+        return SimpleNamespace(encode=lambda *a, **kw: [0.1, 0.2])
+
+    monkeypatch.setattr(qdrant_service, "SentenceTransformer", model)
+    retriever._client = SimpleNamespace(
+        collection_exists=lambda _: True,
+        get_collection=lambda _: _ready_collection(),
+        query_points=lambda **kw: SimpleNamespace(points=[]),
+    )
+    monkeypatch.setattr(main, "check_qdrant_status", retriever.check_status)
+    monkeypatch.setattr(main, "retrieve_chunks", retriever.retrieve_chunks)
+    monkeypatch.setattr(
+        main, "check_postgres_status", lambda: {"state": "empty", "connected": True}
+    )
+    client = TestClient(main.app)
+    assert client.get("/health").json()["sources"]["vector"]["state"] == "warming"
+    result = client.post(
+        "/retrieve", json={"query": "crop", "include_sql": False}
+    ).json()
+    assert result["status"] == "available"
+    assert client.get("/health").json()["sources"]["vector"]["state"] == "ready"
+    assert loads == [{"device": "cpu"}]
+
+
+def test_text_year_metadata_does_not_match_unknown_or_invalid_years():
+    helper = PostgresHelper()
+    helper._engine = create_engine("sqlite://")
+    with helper._engine.begin() as conn:
+        conn.execute(
+            text(
+                "CREATE TABLE crop_years (_rag_region TEXT, _rag_start_year TEXT, _rag_end_year TEXT)"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO crop_years VALUES ('kherson','',''),('kherson','unknown','unknown'),('kherson','2020','2020'),('kherson','2020.0','2020.0')"
+            )
+        )
+    results = helper.query_relevant_sql_data("crop", region="Kherson", end_year=2025)
+    rows = [row for table in results for row in table["sample_rows"]]
+    assert [row["_rag_start_year"] for row in rows] == ["2020", "2020.0"]

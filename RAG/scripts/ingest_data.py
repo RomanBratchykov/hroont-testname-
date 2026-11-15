@@ -406,17 +406,14 @@ def _extract_jsonl_text(file_path: Path) -> str:
             if formatted.strip():
                 records.append(formatted)
         except json.JSONDecodeError as exc:
-            logger.warning(
-                "Skipping malformed JSON line %d in '%s': %s",
-                line_num,
-                file_path.name,
-                exc,
-            )
+            raise ValueError(
+                f"Malformed JSON line {line_num} in '{file_path.name}'"
+            ) from exc
     return "\n\n---\n\n".join(records)
 
 
 def _extract_pdf_text(file_path: Path) -> str:
-    """Extract text from all readable pages of a PDF using pdfplumber."""
+    """Extract every PDF page; any parser failure invalidates the source."""
     pages_text: list[str] = []
     with open(_long_path(file_path), "rb") as f, pdfplumber.open(f) as pdf:
         for page_idx, page in enumerate(pdf.pages, start=1):
@@ -424,13 +421,10 @@ def _extract_pdf_text(file_path: Path) -> str:
                 page_text = page.extract_text() or ""
                 if page_text.strip():
                     pages_text.append(page_text.strip())
-            except Exception as exc:  # noqa: BLE001 — per-page PDF extraction recovery.
-                logger.warning(
-                    "Failed to extract page %d from PDF '%s': %s",
-                    page_idx,
-                    file_path.name,
-                    exc,
-                )
+            except Exception as exc:
+                raise ValueError(
+                    f"Failed to extract page {page_idx} from PDF '{file_path.name}'"
+                ) from exc
     return "\n\n".join(pages_text)
 
 
