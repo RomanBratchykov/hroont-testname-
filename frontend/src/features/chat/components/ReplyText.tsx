@@ -1,13 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
-import { replyWords } from '../replyWords';
+import { replyWordDelay, replyWords } from '../replyWords';
 
 /** Reveal new replies without altering the complete answer stored in chat history. */
-export function ReplyText({ text, animate, onProgress }: {
+export function ReplyText({ text, animate, onProgress, writing = false }: {
     text: string;
     animate: boolean;
     onProgress: () => void;
+    writing?: boolean;
 }) {
-    if (!animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return <p>{text}</p>;
+    if (!animate) return <p className={writing ? 'reply-writing' : undefined}>{text}</p>;
     // Mount a fresh writer when a reply arrives or animation is enabled after hydration.
     return <WritingReply key={text} text={text} onProgress={onProgress}/>;
 }
@@ -19,12 +20,14 @@ function WritingReply({ text, onProgress }: { text: string; onProgress: () => vo
     useEffect(() => {
         if (!words.length) return;
         let count = 0;
-        const timer = window.setInterval(() => {
+        let timer: number;
+        const reveal = () => {
             count++;
             setVisible(count);
-            if (count >= words.length) clearInterval(timer);
-        }, 45);
-        return () => clearInterval(timer);
+            if (count < words.length) timer = window.setTimeout(reveal, replyWordDelay(words[count - 1]));
+        };
+        timer = window.setTimeout(reveal, 150);
+        return () => clearTimeout(timer);
     }, [words]);
     useLayoutEffect(() => {
         onProgress();

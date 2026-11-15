@@ -87,6 +87,11 @@ Discuss possible changes hypothetically and explain missing inputs and validatio
 Do not claim to save changes to the shared synthetic example. save_user_info writes the
 visitor's private farmer profile and field boundary, which appear in Personal state and the map.
 The visitor's own saved information takes precedence over the synthetic example for their field.
+The saved visitor profile is the CURRENT editable farm input, including its configured starting
+values. Discuss it as their current information, not as an inaccessible shared example. Values
+are unverified inputs, never lab measurements or scientific results. save_user_info can change
+them. Users can edit or clear their profile in Personal state. If cleared, do not repopulate it
+from old chat history or example data unless the user explicitly supplies or requests those values.
 Visitor chats are private; the shared example profile remains unchanged for other visitors.
 Saved example data: """ + json.dumps(DEMO, ensure_ascii=False)
 QUESTIONNAIRE = (ROOT / "AGENTS/AgroResilience_Farmer_Questionnaire.md").read_text()

@@ -6,7 +6,7 @@ import still from '../assets/mascot-still.png';
 
 export type MascotStatus = 'idle' | 'composing' | 'conversation' | 'thinking' | 'question' | 'idea';
 
-/** Supplied GIF states, with a static fallback and reduced-motion support. */
+/** Supplied greeting, thinking and result GIFs; static fallback on load failure. */
 export function Mascot({ animated = true, status = 'idle', onReady }: {
   animated?: boolean;
   status?: MascotStatus;
@@ -16,7 +16,6 @@ export function Mascot({ animated = true, status = 'idle', onReady }: {
   const requestedSource = !animated ? still : status === 'question' || status === 'thinking' ? question : status === 'idea' ? idea : animation;
   const source = failedSource === requestedSource ? still : requestedSource;
   return <picture className="soily-mascot" aria-hidden="true">
-    <source media="(prefers-reduced-motion: reduce)" srcSet={still} />
     <img key={source} src={source} onLoad={onReady} onError={() => { setFailedSource(source); onReady?.(); }} alt="" width={500} height={650} draggable={false} />
   </picture>;
 }

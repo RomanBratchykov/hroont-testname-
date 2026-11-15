@@ -7,7 +7,7 @@ import math
 import sqlite3
 from datetime import UTC, date, datetime
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from xml.etree import ElementTree
 
 import httpx
@@ -258,12 +258,18 @@ def source_definitions(latitude, longitude):
     ]
 
 
-async def check_sources(http, latitude, longitude):
+async def check_sources(http, latitude, longitude, *, earthdata_token=""):
     async def check(source):
         statuses = []
         for url in source["urls"]:
             try:
-                response = await http.get(url, timeout=12)
+                # Never forward this credential to POWER, ISRIC, FAO or redirects.
+                parsed = urlsplit(url)
+                authenticated = earthdata_token and parsed.scheme == "https" and parsed.hostname in {
+                    "cmr.earthdata.nasa.gov", "gpm1.gesdisc.eosdis.nasa.gov",
+                }
+                headers = {"Authorization": f"Bearer {earthdata_token}"} if authenticated else {}
+                response = await http.get(url, timeout=12, headers=headers, follow_redirects=False)
                 if response.status_code in (401, 403) or (
                     response.is_redirect
                     and "urs.earthdata.nasa.gov" in response.headers.get("location", "")

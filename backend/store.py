@@ -126,16 +126,28 @@ class Store:
             return row[0] if row else None
 
     def profile(self, owner: str) -> dict:
+        from backend.profile import starting_profile
+
         with self.connect() as db:
+            # A stored empty row is deliberate (cleared), and must never be re-seeded.
+            db.execute("INSERT OR IGNORE INTO user_profiles VALUES (?,?,?)",
+                       (owner, json.dumps(starting_profile(), ensure_ascii=False), time.time()))
             row = db.execute("SELECT data, updated_at FROM user_profiles WHERE owner=?", (owner,)).fetchone()
         data = json.loads(row["data"]) if row else {"facts": {}, "boundary": None}
         return {**data, "updated_at": row["updated_at"] if row else None,
                 "provenance": "farmer_reported", "verified": False}
 
+    def clear_profile(self, owner: str) -> dict:
+        with self.connect() as db:
+            db.execute("INSERT INTO user_profiles VALUES (?,?,?) ON CONFLICT(owner) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at",
+                       (owner, json.dumps({"facts": {}, "boundary": None}), time.time()))
+        return self.profile(owner)
+
     def update_profile(self, owner: str, update: dict) -> dict:
         from backend.profile import ProfileUpdate
 
         patch = ProfileUpdate.model_validate(update)
+        self.profile(owner)
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT data FROM user_profiles WHERE owner=?", (owner,)).fetchone()

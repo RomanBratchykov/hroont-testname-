@@ -4,9 +4,21 @@ import json
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from backend.config import ROOT
 
 FactKey = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
 FactValue = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=400)]
+
+
+def starting_profile() -> dict:
+    """Configured starting inputs; each visitor gets an independent editable copy."""
+    source = json.loads((ROOT / "input_data/john_showcase.json").read_text(encoding="utf-8"))
+    return {"facts": {
+        "name": "John", "location": "Kherson Oblast, Ukraine", "field_area": "30 ha",
+        "irrigation": "Rainfed", "crop_history": "2023: sunflower; 2024: sunflower; 2025: winter wheat",
+        "soil": "Loam", "tillage": "Minimum till", "residue_cover": "Approximately 45%",
+        "planning": "8 years, 2026-2033",
+    }, "boundary": source["field"]["geometry"]}
 
 
 class ProfileUpdate(BaseModel):

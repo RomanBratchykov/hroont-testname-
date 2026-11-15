@@ -149,6 +149,15 @@ A provider may still bill a request already sent. Chats expire after 30 days of 
 
 ## Files, translation and future scripts
 
+For NASA Earthdata authentication, put `EARTHDATA_TOKEN=your_token_here` in the root `.env`
+next to `run.ps1` / `run.sh`, then restart the backend using the project launcher. Paste only
+the token, without `Bearer`. If running Uvicorn directly, set `EARTHDATA_TOKEN` in its server
+environment instead. On a hosted deployment, use its private environment-variable settings.
+The token is used only for the allowlisted Earthdata CMR and GES DISC source-check requests;
+it is not sent to the model or other data providers. Source checks still retrieve metadata or
+catalogs; configuring a token does not implement raster downloads or scientific calculations.
+Generate a token through [Earthdata Login](https://urs.earthdata.nasa.gov/documentation/for_users/user_token).
+
 Attach `.md`, `.txt`, `.json`, `.geojson`, `.csv` or `.tsv` through the picker, drag-and-drop,
 or clipboard file paste. Text must be UTF-8 and JSON must be valid. Images, PDFs, spreadsheets
 and other formats are rejected with instructions to paste relevant text or export a supported
@@ -170,9 +179,13 @@ are replaced in model context with an explicit omission notice, while full resul
 in **Tool findings**. If the continuation still cannot fit, the app returns a partial result
 with the available findings. Context overflow logs record byte counts, not private content.
 
-Soily can persist farmer-provided facts and field boundaries using `save_user_info`, and read
-them with `read_user_info`. Personal state displays this saved profile, separate from John's
-synthetic example. The dashboard's **Save field** button persists the displayed polygon and
+Each visitor starts with an independent editable copy of the configured John/Kherson inputs
+and boundary. These are current, unverified farm inputs, not scientific results. Existing saved
+profiles are preserved. Soily can update facts and boundaries using `save_user_info`, read them
+with `read_user_info`, and clear them on explicit request with `clear_user_info`. Personal state
+provides editable fields, **Save changes**, and **Clear all information and field boundary**.
+Clearing persists an empty profile; defaults are not restored on reload or restart. Clearing
+profile data does not delete conversation history. The dashboard's **Save field** button persists the displayed polygon and
 loads it on subsequent visits. Saving records farmer-reported information, not verification.
 Profiles are stored in SQLite and scoped to the existing private browser session cookie;
 they survive new chats, page reloads, chat-history deletion and server restarts. Clearing or

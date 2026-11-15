@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 
 class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    action: Literal["send", "list", "read", "rename", "delete", "clear", "profile", "save_profile"] = "send"
+    action: Literal["send", "list", "read", "rename", "delete", "clear", "profile", "save_profile", "clear_profile"] = "send"
     conversation_id: str = Field(
         default="", max_length=100, pattern=r"^[A-Za-z0-9_-]*$"
     )
@@ -218,7 +218,10 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
         longitude: float = Query(ge=-180, le=180, allow_inf_nan=False),
     ):
         async with app.state.data_slots:
-            return await check_sources(app.state.data_http, latitude, longitude)
+            return await check_sources(
+                app.state.data_http, latitude, longitude,
+                earthdata_token=config.earthdata_token,
+            )
 
     @app.post("/api/chat")
     async def chat(payload: ChatRequest, request: Request):
@@ -226,6 +229,8 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
         owner = request.state.owner
         if payload.action == "profile":
             return store.profile(owner)
+        if payload.action == "clear_profile":
+            return store.clear_profile(owner)
         if payload.action == "save_profile":
             if payload.profile is None:
                 raise HTTPException(422, "Provide profile facts or a field boundary.")

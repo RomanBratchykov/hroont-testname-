@@ -243,6 +243,15 @@ def build_tools(
     rag_enabled = bool(config and config.rag_url)
 
     def for_chat(chat: str):
+        def clear_user_info() -> dict:
+            owner = store.chat_owner(chat)
+            if owner is None:
+                return {"status": "unavailable", "reason": "No account session is associated with this chat."}
+            try:
+                return {"status": "cleared", "profile": store.clear_profile(owner)}
+            except sqlite3.Error:
+                return {"status": "unavailable", "reason": "Clearing was not confirmed. Retry later."}
+
         def read_user_info() -> dict:
             owner = store.chat_owner(chat)
             if owner is None:
@@ -309,6 +318,10 @@ def build_tools(
 
         tool_list = [
             StructuredTool.from_function(
+                clear_user_info, name="clear_user_info", args_schema=NoArgs,
+                description="Permanently clear ALL current profile facts and the field boundary for this visitor. Use only when the user explicitly asks to clear their profile or all farm information. Does not delete chat history. Only confirm clearing when status is cleared.",
+            ),
+            StructuredTool.from_function(
                 save_user_info, name="save_user_info", args_schema=ProfileUpdate,
                 description="Persist user-provided farmer profile facts and/or field boundary to the current private account session. Facts are short named string values; boundary is four [longitude, latitude] corners in boundary order (a repeated closing fifth point is accepted). Save only supplied facts; never guess. A saved boundary is farmer-reported, not verified. Only report success when status is saved.",
             ),
@@ -363,7 +376,10 @@ def build_tools(
 
             async def check_data_sources(latitude: float, longitude: float) -> dict:
                 async with data_slots:
-                    result = await check_sources(data_http, latitude, longitude)
+                    result = await check_sources(
+                        data_http, latitude, longitude,
+                        earthdata_token=config.earthdata_token,
+                    )
                 # Keep provider provenance and limitations without duplicating all probe URLs.
                 # The dashboard retains full per-property request details.
                 return {

@@ -3,6 +3,7 @@ import { chatReducer, initialState, parseSavedState, STORAGE_KEY } from './state
 import type { ChatAction, Conversation, Message } from './state';
 import { command, encodeFiles, readEvents } from './api';
 import type { ChatEvent } from './api';
+import { revealReply } from './revealReply.ts';
 import { useAppearance } from '../settings/appearanceContext';
 
 const connected = import.meta.env.VITE_CHAT_BACKEND === 'on';
@@ -110,15 +111,19 @@ export function useChat() {
                 if (event.type === 'error') { setStatus(null); setError(event.message ?? 'Processing failed.'); }
                 if (event.type === 'answer') {
                     setRevealingMessageId(`${request}:answer`);
-                    setFinalizedMessageId(event.status === 'partial' ? null : `${request}:answer`);
-                    apply({ type: 'answer', conversationId: chat, messageId: `${request}:answer`, text: event.content!, now: Date.now() });
                     setEvidence(event.evidence ?? []); setStatus(null);
+                    const now = Date.now();
+                    await revealReply(event.content!, visible => {
+                        apply({ type: 'answer', conversationId: chat, messageId: `${request}:answer`, text: visible, now });
+                    }, abort.signal);
+                    setRevealingMessageId(null);
+                    setFinalizedMessageId(event.status === 'partial' ? null : `${request}:answer`);
                 }
             }
         } catch (reason) {
             if (abort.signal.aborted) setStatus({ type: 'status', stage: 'cancelled', message: 'Stopped. Send a new message to retry.' });
             else { showError(reason); setStatus(null); }
-        } finally { controller.current = null; setBusy(false); }
+        } finally { controller.current = null; setRevealingMessageId(null); setBusy(false); }
     };
     const clear = async () => {
         controller.current?.abort(); historyController.current?.abort();
