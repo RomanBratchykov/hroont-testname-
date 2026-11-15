@@ -192,12 +192,26 @@ an inline map. The map fits the boundary automatically; crossing edges, duplicat
 out-of-range coordinates and zero-area shapes are rejected. Boundaries are farmer-provided
 and unverified, and do not change the separately selected climate query point.
 
-The app limits the entire serialized model request to 32 KB by default, including policy,
+The app limits the entire serialized model request to 128 KB for DeepSeek and 32 KB for Ollama
+by default, including policy,
 tool schemas, history, reasoning continuation and tool results. A small user message can
 therefore still trigger the limit. Older turns are removed first; oversized tool results
 are replaced in model context with an explicit omission notice, while full results remain
-in **Tool findings**. If the continuation still cannot fit, the app returns a partial result
-with the available findings. Context overflow logs record byte counts, not private content.
+in **Tool findings**. If the continuation still cannot fit, the app explains completed findings
+with the recovery step below. Context overflow logs record byte counts, not private content.
+
+Set `MODEL_MAX_CONTEXT_BYTES` (8000-128000) to override that limit; `/api/health` reports the
+active value. DeepSeek now has room for tool schemas, reasoning and results without the former
+32 KB restriction. The always-sent reference is brief instead of the full questionnaire and
+example narrative. If a continuation still grows too large, completed findings are explained
+through one bounded results-only call using the same provider, without tool schemas or private
+reasoning. This is a new final-answer request, not a replay of an uncertain billed call. Spending
+limits still apply. If that explanation cannot run, actual completed metrics and missing inputs
+are shown deterministically; partial notices stay outside the conversational answer.
+
+Normal UI labels use current farm inputs and draft rotations. Personal state and the dashboard
+show the visitor's current saved values, with original starting-input provenance available in
+the source download. Assumed values are not relabeled as measured or statistically imputed data.
 
 Each visitor starts with an independent editable copy of the configured John/Kherson inputs
 and boundary. These are current, unverified farm inputs, not scientific results. Existing saved

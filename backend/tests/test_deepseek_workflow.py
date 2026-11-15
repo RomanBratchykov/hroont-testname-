@@ -25,7 +25,7 @@ def test_deepseek_existing_showcase_history_tools_and_budget(tmp_path, mode):
             "enabled" if mode == "thinking" else "disabled"
         )
         assert "John" in body["messages"][0]["content"]
-        assert "synthetic" in body["messages"][0]["content"]
+        assert "configured assumptions" in body["messages"][0]["content"]
         assert showcase["farmer"]["region"] in body["messages"][0]["content"]
         if len(requests) == 1:
             message = {

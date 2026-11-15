@@ -1,8 +1,95 @@
 import asyncio
 import json
 
+import pytest
+
 from backend.config import Settings
 from backend.orchestrator import Orchestrator
+
+
+def test_deepseek_has_room_for_tools_without_changing_ollama_budget(monkeypatch):
+    assert Settings(provider="deepseek").max_context_bytes == 128000
+    assert Settings(provider="ollama").max_context_bytes == 32000
+    assert (
+        Settings(provider="deepseek", max_context_bytes=8000).max_context_bytes == 8000
+    )
+    monkeypatch.setenv("MODEL_MAX_CONTEXT_BYTES", "64000")
+    assert Settings.from_env().max_context_bytes == 64000
+
+
+@pytest.mark.parametrize("summary_unavailable", [False, True])
+def test_overgrown_reasoning_recovers_a_real_calculation_without_technical_reply(
+    tmp_path,
+    summary_unavailable,
+):
+    import httpx
+    from fastapi.testclient import TestClient
+
+    from backend.api import create_app
+
+    bodies = []
+
+    def upstream(request):
+        body = json.loads(request.content)
+        bodies.append(body)
+        if len(bodies) == 1:
+            message = {
+                "role": "assistant",
+                "content": "",
+                "reasoning_content": "private thought " * 5000,
+                "tool_calls": [
+                    {
+                        "id": "margin",
+                        "type": "function",
+                        "function": {
+                            "name": "calculate_gross_margin",
+                            "arguments": '{"crop":"chickpea","use_configured_assumptions":true}',
+                        },
+                    }
+                ],
+            }
+        else:
+            assert "tools" not in body
+            assert "12800" in body["messages"][-1]["content"]
+            assert "private thought" not in json.dumps(body)
+            if summary_unavailable:
+                return httpx.Response(503, json={"error": "Unavailable"})
+            message = {
+                "role": "assistant",
+                "content": "Using your configured inputs, chickpea's gross margin is 12,800 UAH/ha.",
+            }
+        return httpx.Response(
+            200, json={"choices": [{"message": message, "finish_reason": "stop"}]}
+        )
+
+    config = Settings(
+        provider="deepseek",
+        openai_base_url="http://localhost:8001",
+        database_path=tmp_path / "recovery.sqlite",
+        max_context_bytes=32000,
+    )
+    with TestClient(
+        create_app(config, transport=httpx.MockTransport(upstream))
+    ) as client:
+        response = client.post(
+            "/api/chat",
+            json={
+                "conversation_id": "field",
+                "request_id": "math",
+                "message": "Calculate chickpea return with the configured inputs.",
+                "mode": "thinking",
+            },
+        )
+        event = [json.loads(line) for line in response.text.splitlines()][-1]
+        assert event["type"] == "answer"
+        assert ("12800.0 UAH/ha" if summary_unavailable else "12,800 UAH/ha") in event[
+            "content"
+        ]
+        assert event["status"] == ("partial" if summary_unavailable else "completed")
+        assert "context limit" not in event["content"]
+        assert "No final scientific conclusion" not in event["content"]
+        assert event["evidence"][0]["result"]["gross_margin_per_ha"]["value"] == 12800
+        assert len(bodies) == 2
 
 
 def test_large_tool_results_fit_without_breaking_deepseek_call_sequence():

@@ -37,6 +37,13 @@ class Settings(BaseModel):
     translation_url: str = ""
     translation_key: str = Field(default="", repr=False)
 
+    @model_validator(mode="before")
+    @classmethod
+    def provider_context_budget(cls, values):
+        if isinstance(values, dict) and "max_context_bytes" not in values:
+            return {**values, "max_context_bytes": 128000 if values.get("provider") == "deepseek" else 32000}
+        return values
+
     @model_validator(mode="after")
     def local_model_server(self):
         from urllib.parse import urlsplit
@@ -154,6 +161,7 @@ class Settings(BaseModel):
             ("DEEPSEEK_INPUT_USD_PER_MILLION", "input_rate"),
             ("DEEPSEEK_OUTPUT_USD_PER_MILLION", "output_rate"),
             ("MODEL_TIMEOUT_SECONDS", "request_timeout"),
+            ("MODEL_MAX_CONTEXT_BYTES", "max_context_bytes"),
             ("MAX_ACTIVE_USERS", "max_active_users"),
             ("MODEL_CONCURRENCY", "concurrency"),
             ("OLLAMA_CONTEXT_TOKENS", "ollama_context_tokens"),

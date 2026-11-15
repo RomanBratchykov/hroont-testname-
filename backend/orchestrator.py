@@ -11,6 +11,7 @@ from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import ValidationError
 
 from backend.config import ROOT, Settings
+from backend.finding_reply import describe_findings, findings_context
 from backend.language import requires_translation
 from backend.providers import Provider, ProviderError
 from backend.source_summary import source_status_summary
@@ -20,6 +21,12 @@ log = logging.getLogger(__name__)
 
 POLICY = """You are Soily, a friendly AgroResilience assistant helping farmers understand their fields.
 Answer in English, in a warm, natural, concise way. Have a conversation, not an interview or survey.
+Use plain text and short, natural paragraphs. Do not use ** emphasis markers, Markdown headings,
+or routine sections such as "What is connected" and "What isn't connected" unless asked.
+Usually answer in one to three direct sentences; give more detail when the user asks for it.
+Lead with the useful answer or calculated result. Include essential units, input assumptions and
+limitations briefly, without repeating stock disclaimers or long lists of unavailable features.
+Use everyday words, contractions and a conversational tone; avoid scripted, bureaucratic phrasing.
 Respond to what the farmer actually says or asks before seeking more information.
 Use the internal reference only to identify information relevant to their current goal.
 Do not copy its questions verbatim or present a checklist. Never show question IDs, numbered intake
@@ -74,32 +81,18 @@ chickpea or winter_wheat. These saved values override configured assumptions in 
 Only say information was saved after the tool returns status=saved. On failure explain that
 it was not saved. Saving a boundary does not verify it. read_user_info retrieves saved facts.
 """
-SHOWCASE_INPUTS = json.loads((ROOT / "input_data/john_showcase.json").read_text())
-DEMO = dict(SHOWCASE_INPUTS["presentation"])
+SHOWCASE_INPUTS = json.loads((ROOT / "input_data/john_showcase.json").read_text(encoding="utf-8"))
 POLICY += """
-This is Croptato's test account. The shared persona is John; the visitor is exploring as John,
-not required to supply their own farm profile. Use the saved example below when asked about the
-example account or comparisons; do not restart an intake interview for known demo facts.
-The profile and rotations are synthetic examples from the specification, not computed recommendations.
-Discuss possible changes hypothetically and explain missing inputs and validation.
-Do not claim to save changes to the shared synthetic example. save_user_info writes the
-visitor's private farmer profile and field boundary, which appear in Personal state and the map.
-The visitor's own saved information takes precedence over the synthetic example for their field.
-The saved visitor profile is the CURRENT editable farm input, including its configured starting
-values. Discuss it as their current information, not as an inaccessible shared example. Values
-are unverified inputs, never lab measurements or scientific results. save_user_info can change
-them. Users can edit or clear their profile in Personal state. If cleared, do not repopulate it
-from old chat history or example data unless the user explicitly supplies or requests those values.
-Visitor chats are private; the shared example profile remains unchanged for other visitors.
-Saved example data: """ + json.dumps(DEMO, ensure_ascii=False)
-POLICY += "\nLegacy example text describes the saved snapshot, not current tool availability. The calculation tools listed in this request are connected. Use their results and missing-input states.\n"
-QUESTIONNAIRE = (ROOT / "AGENTS/AgroResilience_Farmer_Questionnaire.md").read_text()
-# Keep only the adopted question catalog; never put the full scientific document or credentials in prompts.
-QUESTIONS = "\n".join(
-    "- " + " | ".join(line.strip("| ").split(" | ")[1:])
-    for line in QUESTIONNAIRE.splitlines()
-    if line.startswith("| **Q")
-)
+The current visitor's saved profile contains their editable farm inputs. Starting John/Kherson
+values are configured assumptions, not measured observations; discuss them naturally as current
+inputs rather than repeatedly calling the workspace a test or fictional account. When provenance
+matters, identify assumptions briefly and keep full source details available. Do not claim starting
+values are verified measurements or statistical imputations. Do not claim to save without a tool.
+save_user_info updates this visitor's private profile, shown in Personal state and the map.
+If the user clears it, do not restore old history or starting inputs without an explicit request.
+Draft rotations are not validated recommendations. Current tool capabilities take precedence over
+older chat messages and saved descriptions that say calculations are disconnected.
+"""
 
 
 RAG_POLICY_ADDENDUM = (
@@ -139,7 +132,7 @@ class Orchestrator:
         system_content = (
             POLICY
             + "\nInternal field-information reference (not a conversation script):\n"
-            + QUESTIONS
+            + "Use saved facts first. Ask only for relevant missing location, GeoJSON field boundary, field area, exact crop years, soil, whether irrigated, management or planning inputs."
         )
         owner = self.store.chat_owner(chat)
         if owner is not None:
@@ -287,8 +280,7 @@ class Orchestrator:
         if size > config.max_context_bytes:
             raise ProviderError(
                 "context_limit",
-                "The conversation and tool continuation exceed this app's context limit. "
-                "Start a new chat or request one analysis at a time; your input may be small.",
+                "Model request requires a smaller context.",
             )
         charge = None
         if config.paid_model:
@@ -487,7 +479,7 @@ class Orchestrator:
                     )
                     event = {
                         "type": "answer",
-                        "content": response.message["content"],
+                        "content": response.message["content"].replace("**", ""),
                         "status": "partial" if response.truncated or context_omitted else "completed",
                         "conversation_id": chat,
                         "request_id": request,
@@ -496,14 +488,9 @@ class Orchestrator:
                         "model": self.config.model_name,
                     }
                     if response.truncated:
-                        event["content"] += (
-                            "\n\n[Output limit reached; this answer is incomplete.]"
-                        )
+                        event["notice"] = "This reply ended early. You can ask me to continue."
                     if context_omitted:
-                        event["content"] += (
-                            "\n\n[Some tool results could not fit in model context. "
-                            "This answer is partial; full results are attached in Tool findings.]"
-                        )
+                        event["notice"] = "Full tool findings are available below; this reply uses a shorter summary."
                     self.store.finish(request, event, "completed")
                     yield event
                     return
@@ -579,8 +566,8 @@ class Orchestrator:
                 "status": "partial",
                 "conversation_id": chat,
                 "request_id": request,
-                "content": "Processing limit reached. No final scientific conclusion was produced. "
-                "Available tool findings are attached; narrow the question to continue.",
+                "content": describe_findings(evidence) if evidence else "I couldn't finish that reply. Please try again.",
+                "notice": "Completed tool findings are available below.",
                 "evidence": evidence,
             }
             self.store.finish(request, event, "completed")
@@ -594,13 +581,26 @@ class Orchestrator:
             raise
         except (ProviderError, BudgetExceeded, Conflict) as exc:
             if isinstance(exc, ProviderError) and exc.code == "context_limit" and evidence:
+                # The oversized continuation was blocked locally, before dispatch or billing.
+                # Start a separate results-only request without tool schemas or private reasoning.
+                final_messages, shortened = findings_context(content, evidence, self.config.max_context_bytes)
+                reply = describe_findings(evidence)
+                recovered = False
+                try:
+                    final = await self.model_call(final_messages, [], False)
+                    if not final.calls and final.message.get("content"):
+                        reply = final.message["content"]
+                        recovered = not final.truncated and not shortened
+                except (ProviderError, BudgetExceeded):
+                    log.warning("Results-only answer unavailable; retained deterministic findings for request %s", request)
                 event = {
-                    "type": "answer", "status": "partial",
+                    "type": "answer", "status": "completed" if recovered else "partial",
                     "conversation_id": chat, "request_id": request,
-                    "content": exc.message + " Available results are attached in Tool findings. "
-                    "No final scientific conclusion was produced.",
+                    "content": reply.replace("**", ""),
                     "evidence": evidence,
                 }
+                if not recovered:
+                    event["notice"] = "The completed tool findings are available below; some details could not be included in this reply."
                 self.store.finish(request, event, "completed")
                 yield event
                 return

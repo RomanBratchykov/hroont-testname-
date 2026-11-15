@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+﻿import { useEffect, useRef } from 'react';
 import { FieldDashboard } from '../field-dashboard/FieldDashboard';
+import { SavedUserProfile } from './SavedUserProfile';
 import demo, { showcaseInputs } from '../../config/showcase';
 
 export function DemoDashboard({ onAsk }: { onAsk: (question: string) => void }) {
@@ -8,25 +9,19 @@ export function DemoDashboard({ onAsk }: { onAsk: (question: string) => void }) 
   const download = () => {
     const url = URL.createObjectURL(new Blob([JSON.stringify(showcaseInputs, null, 2)], { type: 'application/json' }));
     const link = document.createElement('a');
-    link.href = url;
-    link.download = 'croptato-john-showcase-inputs.json';
-    link.click();
+    link.href = url; link.download = 'croptato-starting-inputs.json'; link.click();
     URL.revokeObjectURL(url);
   };
   return <section className="workspace-page" aria-labelledby="dashboard-title">
-    <header className="page-heading"><p className="page-eyebrow">Field intelligence</p><h1 id="dashboard-title" ref={heading} tabIndex={-1}>Your field, connected</h1><p>Explore a location. Inspect its climate. Know exactly where your data comes from.</p></header>
-    <FieldDashboard onAsk={onAsk} />
-    <h2 className="page-eyebrow">Saved synthetic example · Separate from selected-point climate</h2>
-    <section className="personal-section demo-profile" aria-label="Demonstration field">
-      <h2>{demo.accountName} · {demo.location}</h2>
-      <dl><div><dt>Field size</dt><dd>Approximately {demo.areaHa} ha · synthetic</dd></div><div><dt>Water</dt><dd>{demo.water}</dd></div><div><dt>Crop history</dt><dd>{demo.cropHistory}</dd></div><div><dt>Soil</dt><dd>{demo.soil}</dd></div></dl>
-    </section>
+    <header className="page-heading"><p className="page-eyebrow">Field intelligence</p><h1 id="dashboard-title" ref={heading} tabIndex={-1}>Your field, connected</h1><p>Explore your field, inspect its climate and calculate from your current inputs.</p></header>
+    <FieldDashboard onAsk={onAsk}/>
+    <SavedUserProfile/>
     <div className="demo-strategies">{demo.strategies.map(strategy => <section className="personal-section" key={strategy.id}>
-      <p className="page-eyebrow">Illustrative rotation · Not validated</p><h2>{strategy.title}</h2><p className="demo-description">{strategy.description}</p>
+      <p className="page-eyebrow">Draft rotation - requires checks</p><h2>{strategy.title}</h2><p className="demo-description">{strategy.description}</p>
       <ol className="demo-rotation">{strategy.crops.map((crop, index) => <li key={index}><span>Year {index + 1}</span><strong>{crop}</strong></li>)}</ol>
-      <button className="quiet-button" onClick={() => onAsk(`Explain John’s ${strategy.title} example and which data or checks are missing before it could be recommended.`)}>Ask Soily about this example →</button>
+      <button className="quiet-button" onClick={() => onAsk(`Review the ${strategy.title} draft against my current saved inputs. Run the relevant calculation tools and explain any missing checks.`)}>Review this rotation with Soily</button>
     </section>)}</div>
-    <section className="personal-section demo-limitations"><h2>What this example can tell you</h2><p className="demo-description">Explore the presentation and discuss assumptions with Soily. Scientific results remain unavailable until the analysis tools and required inputs are connected.</p><ul>{demo.limitations.map(text => <li key={text}>{text}</li>)}</ul><p className="settings-saved">Source: {demo.source}. John is the test persona added for this presentation.</p></section>
-    <div className="demo-actions"><button className="quiet-button" onClick={download}>Download example data</button><button className="quiet-button" onClick={() => onAsk('What might change in John’s example if irrigation became available? Explain the assumptions and missing data without claiming a calculated result.')}>Discuss a change with Soily →</button></div>
+    <details className="personal-section demo-limitations"><summary>Input details and calculation assumptions</summary><p>Your saved profile is editable. Draft rotations remain separate from completed analysis results.</p><ul>{demo.limitations.map(text => <li key={text}>{text}</li>)}</ul><p>{demo.source}</p><button className="quiet-button" onClick={download}>Download original starting inputs and provenance</button></details>
+    <div className="demo-actions"><button className="quiet-button" onClick={() => onAsk('What changes if irrigation becomes available for my current field? Use my saved inputs and the connected tools, and identify any missing data.')}>Explore a change with Soily</button></div>
   </section>;
 }

@@ -183,6 +183,7 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
             "max_active_users": config.max_active_users if config.provider == "deepseek" else None,
             "active": app.state.engine.active,
             "capacity": config.concurrency,
+            "max_context_bytes": config.max_context_bytes,
             "phase": config.phase,
             "budget": {
                 **store.budget(config.phase),

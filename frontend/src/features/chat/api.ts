@@ -1,6 +1,7 @@
 import { validateFiles } from './attachments.ts';
 
 export interface ChatEvent {
+    notice?: string;
     type: 'status' | 'answer' | 'error';
     stage?: string;
     message?: string;

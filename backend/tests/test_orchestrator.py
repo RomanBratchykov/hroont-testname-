@@ -583,7 +583,7 @@ def test_model_receives_unlabelled_topics_and_conversational_guidance(tmp_path):
     assert "Do not copy" in policy
     assert "one short, relevant question" in policy
     # Retain the information needs without exposing the numbered questionnaire.
-    assert "GeoJSON/KML" in policy
+    assert "GeoJSON" in policy
     assert "irrigated" in policy
     assert "Unknown is valid" in policy
     assert messages[-1]["content"] == "My field is near Kharkiv."
@@ -772,7 +772,7 @@ def test_soily_receives_johns_demo_profile_and_saved_dashboard(tmp_path):
         )
         assert "John" in context
         assert "Kherson" in context
-        assert "synthetic" in context
-        assert "saved example" in context
-        assert "Chickpea" in context
+        assert "configured assumptions" in context
+        assert "current" in context
+        assert "calculate_gross_margin" in context
         assert "Do not claim to save" in context

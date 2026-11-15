@@ -4,6 +4,7 @@ import type { ChatAction, Conversation, Message } from './state';
 import { command, encodeFiles, readEvents } from './api';
 import type { ChatEvent } from './api';
 import { revealReply } from './revealReply.ts';
+import { plainAssistantText } from './plainAssistantText';
 import { useAppearance } from '../settings/appearanceContext';
 
 const connected = import.meta.env.VITE_CHAT_BACKEND === 'on';
@@ -113,11 +114,12 @@ export function useChat() {
                     setRevealingMessageId(`${request}:answer`);
                     setEvidence(event.evidence ?? []); setStatus(null);
                     const now = Date.now();
-                    await revealReply(event.content!, visible => {
+                    await revealReply(plainAssistantText(event.content!), visible => {
                         apply({ type: 'answer', conversationId: chat, messageId: `${request}:answer`, text: visible, now });
                     }, abort.signal);
                     setRevealingMessageId(null);
                     setFinalizedMessageId(event.status === 'partial' ? null : `${request}:answer`);
+                    if (event.notice) setStatus({ type: 'status', stage: 'partial', message: event.notice });
                 }
             }
         } catch (reason) {
