@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { replyWords } from '../replyWords';
 
 /** Reveal new replies without altering the complete answer stored in chat history. */
 export function ReplyText({ text, animate, onProgress }: {
@@ -6,28 +7,30 @@ export function ReplyText({ text, animate, onProgress }: {
     animate: boolean;
     onProgress: () => void;
 }) {
-    const [visible, setVisible] = useState(() => animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : Array.from(text).length);
-    const characters = Array.from(text);
-    const writing = animate && visible < characters.length;
+    if (!animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return <p>{text}</p>;
+    // Mount a fresh writer when a reply arrives or animation is enabled after hydration.
+    return <WritingReply key={text} text={text} onProgress={onProgress}/>;
+}
+
+function WritingReply({ text, onProgress }: { text: string; onProgress: () => void }) {
+    const [visible, setVisible] = useState(0);
+    const words = useMemo(() => replyWords(text), [text]);
+    const writing = visible < words.length;
     useEffect(() => {
-        if (!animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-        let frame: number;
-        const start = performance.now();
-        const length = Array.from(text).length;
-        const rate = Math.max(80, length / 12);
-        const tick = (now: number) => {
-            const count = Math.min(length, Math.floor((now - start) * rate / 1000));
+        if (!words.length) return;
+        let count = 0;
+        const timer = window.setInterval(() => {
+            count++;
             setVisible(count);
-            if (count < length) frame = requestAnimationFrame(tick);
-        };
-        frame = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(frame);
-    }, [animate, text]);
+            if (count >= words.length) clearInterval(timer);
+        }, 45);
+        return () => clearInterval(timer);
+    }, [words]);
     useLayoutEffect(() => {
-        if (animate) onProgress();
-    }, [animate, visible, onProgress]);
+        onProgress();
+    }, [visible, onProgress]);
     return <p className={writing ? 'reply-writing' : undefined}>
-        <span aria-hidden={writing || undefined}>{writing ? characters.slice(0, visible).join('') : text}</span>
+        <span aria-hidden={writing || undefined}>{writing ? words.slice(0, visible).join('') : text}</span>
         {writing && <span className="sr-only">Soily is writing a reply.</span>}
     </p>;
 }
