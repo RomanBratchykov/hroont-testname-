@@ -1,0 +1,3 @@
+# Optional: only needed for sample-soil, not collection/query/dashboard.
+--only-binary=:all:
+rasterio>=1.4,<2
