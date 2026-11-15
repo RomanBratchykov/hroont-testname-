@@ -68,7 +68,7 @@ def environment() -> dict[str, str]:
 def select_provider(
     env: dict[str, str], provider: str | None, model: str | None
 ) -> None:
-    selected = provider or env.get("MODEL_PROVIDER") or "deepseek"
+    selected = provider or "deepseek"
     if selected not in {"ollama", "deepseek"}:
         raise SystemExit("MODEL_PROVIDER must be ollama or deepseek.")
     env["MODEL_PROVIDER"] = selected
@@ -275,7 +275,11 @@ def main() -> int:
     parser.add_argument(
         "--doctor", action="store_true", help="Read-only local prerequisite report."
     )
-    parser.add_argument("--provider", choices=["ollama", "deepseek"])
+    parser.add_argument(
+        "--provider",
+        choices=["ollama", "deepseek"],
+        help="Defaults to DeepSeek; use --provider ollama for local inference.",
+    )
     parser.add_argument(
         "--model", help="Exact installed Ollama model tag or DeepSeek model ID."
     )
@@ -364,7 +368,7 @@ def main() -> int:
     if not args.frontend_only:
         if not PYTHON.exists():
             raise SystemExit("Run ./run.sh --setup (or .\\run.ps1 --setup) first.")
-        provider = env.get("MODEL_PROVIDER", "ollama")
+        provider = env.get("MODEL_PROVIDER", "deepseek")
         if (
             provider == "deepseek"
             and not env.get("OPENAI_BASE_URL")

@@ -144,7 +144,7 @@ Generate Linux startup units using `scripts/install_startup.py`; it discovers th
 .venv/bin/python scripts/install_startup.py --native-databases --provider ollama --start
 ```
 
-For hosted DeepSeek, configure the private `.env` key and both current per-million-token rates, then run the installer with `--provider deepseek --start`. The current PC stays explicitly on Ollama until those credentials exist.
+For hosted DeepSeek, configure the private `.env` key and both current per-million-token rates, then run the installer with `--provider deepseek --start`. The launcher defaults to DeepSeek and stops with a configuration error when credentials are missing; use `--provider ollama` explicitly for local inference.
 
 ```bash
 systemctl --user status croptato.service

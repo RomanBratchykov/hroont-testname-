@@ -20,7 +20,7 @@ Windows PowerShell equivalents:
 
 Docker is the recommended cross-platform database path. If Docker is unavailable, install PostgreSQL and Qdrant yourself and start both on the localhost addresses/ports in `.env`. Setup accepts reachable configured databases; a TCP check does not prove credentials/schema/readiness. The launcher supports localhost stores only. Native service installation is OS-specific; copying a Linux service to Windows/macOS will not install a service there.
 
-The launcher selects the provider in this order: `--provider`, `MODEL_PROVIDER` from your shell or `.env`, then `deepseek`. Model selection is `--model`, then `DEEPSEEK_MODEL` or `OLLAMA_MODEL`, then `deepseek-flash` or `qwen3.5:4b`. Legacy `MODEL_NAME` is not used by the launcher, preventing an old local model tag from reaching a cloud API. Direct backend invocation retains its own existing configuration behavior.
+The launcher defaults to `deepseek`. Only an explicit `--provider ollama` selects Ollama; an old `MODEL_PROVIDER=ollama` in the shell or `.env` does not change the launcher default. Model selection is `--model`, then `DEEPSEEK_MODEL` or `OLLAMA_MODEL`, then `deepseek-flash` or `qwen3.5:4b`. Legacy `MODEL_NAME` is not used by the launcher, preventing an old local model tag from reaching a cloud API. Direct backend invocation retains its own existing configuration behavior.
 
 For hosted DeepSeek, leave `OPENAI_BASE_URL` empty and configure `DEEPSEEK_API_KEY` plus both current input/output token rates in `.env`. Starting the app does not test a paid request. For a local OpenAI-compatible DeepSeek server, set `OPENAI_BASE_URL` and its explicit `DEEPSEEK_MODEL`. For Ollama, install/start Ollama and pull your chosen model first:
 
@@ -40,3 +40,31 @@ Use `.venv/bin/python scripts/install_startup.py --start` to generate units from
 The installer validates staged units before replacing an existing boot configuration. Enable user lingering with `loginctl enable-linger <your-user>` for startup before login. Windows/macOS automatic startup remains OS-specific; their run scripts are provided for interactive startup.
 
 `OLLAMA_CONTEXT_TOKENS` defaults to 16384 to accommodate the profile and retrieved evidence; adjust it for the chosen local model and RAM/VRAM. Hosted DeepSeek needs no local generation GPU. Embedding retrieval uses CPU on every supported platform.
+
+## Stop automatic startup
+
+Stop the web app now and prevent startup at login/boot:
+
+```bash
+systemctl --user disable --now croptato.service
+```
+
+Optionally stop its dedicated database services too (data is preserved):
+
+```bash
+systemctl --user disable --now croptato-postgres.service croptato-qdrant.service
+```
+
+This leaves manual `./run.sh` startup available. Deleting the installer script would not disable already-installed services.
+
+## DeepSeek workflow smoke test
+
+After configuring the private DeepSeek key and both token rates, explicitly run:
+
+```bash
+.venv/bin/python scripts/test_deepseek.py --live
+# Also exercise the configured local retrieval service and existing indexed data:
+.venv/bin/python scripts/test_deepseek.py --live --with-rag
+```
+
+Without `--live`, no API calls are made. The test uses the saved synthetic John profile, a separate SQLite chat/budget database, and a $0.10 local reservation cap. It checks fast answers, history/capability tool calls and thinking mode. The cap assumes configured token rates cover the actual API rates; the provider account balance is independent. It saves `result.json`, `trace.jsonl` and a visual `run-dashboard.html` under `data/deepseek-smoke/`. A passing run still requires reviewing the model's scientific caveats. Reference retrieval is separate from scientific computation; climate calculations and dashboard editing are not connected to the main orchestrator. This test does not add them or modify the shared example dashboard.

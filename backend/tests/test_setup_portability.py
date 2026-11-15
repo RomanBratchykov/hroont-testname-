@@ -48,8 +48,8 @@ def test_setup_stops_before_install_without_database_prerequisites(monkeypatch):
         launcher.setup()
 
 
-def test_provider_environment_override_and_model_selection():
+def test_ollama_environment_does_not_override_deepseek_default():
     env = {"MODEL_PROVIDER": "ollama", "OLLAMA_MODEL": "local:7b"}
     launcher.select_provider(env, None, None)
-    assert env["MODEL_PROVIDER"] == "ollama"
-    assert env["MODEL_NAME"] == "local:7b"
+    assert env["MODEL_PROVIDER"] == "deepseek"
+    assert env["MODEL_NAME"] == "deepseek-flash"
