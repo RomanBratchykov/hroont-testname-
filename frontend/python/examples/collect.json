@@ -1,0 +1,13 @@
+{
+  "latitude": 49.9935,
+  "longitude": 36.2304,
+  "start": "2025-04-01",
+  "end": "2025-09-30",
+  "sources": ["power"],
+  "options": {
+    "power": {"variables": ["T2M", "T2M_MAX", "T2M_MIN", "PRECTOTCORR"]},
+    "hls_s30": {"max_pages": 1},
+    "soilgrids": {"properties": ["clay", "soc"], "depths": ["0-5cm"]},
+    "faostat": {"items": [15], "elements": [5510]}
+  }
+}

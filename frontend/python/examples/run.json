@@ -1,0 +1,24 @@
+{
+  "field_name": "Харківська область · синтетична пілотна точка",
+  "latitude": 49.9935,
+  "longitude": 36.2304,
+  "start": "2016-01-01",
+  "end": "2025-12-31",
+  "sources": ["power"],
+  "cache_hours": 720,
+  "options": {
+    "power": {"variables": ["T2M", "T2M_MAX", "T2M_MIN", "PRECTOTCORR"]}
+  },
+  "analysis": {
+    "heat_threshold": 35,
+    "frost_threshold": 0,
+    "dry_threshold": 1,
+    "seasons": [
+      {"name": "Озима пшениця: орієнтовне вікно", "start": "10-01", "end": "06-30"},
+      {"name": "Ярі культури: орієнтовне вікно", "start": "04-01", "end": "09-30"}
+    ]
+  },
+  "dashboard": {
+    "cards": ["rainfall", "temperature", "heat_frost", "dry_spells", "seasons", "quality"]
+  }
+}
