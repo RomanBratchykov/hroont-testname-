@@ -1,0 +1,8 @@
+{
+  "latitude": 49.9935,
+  "longitude": 36.2304,
+  "start": "2025-01-01",
+  "end": "2025-01-02",
+  "sources": ["soilgrids"],
+  "options": {"soilgrids": {"properties": ["clay"], "depths": ["0-5cm"]}}
+}

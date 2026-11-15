@@ -1,0 +1,110 @@
+{
+  "checked_at": "2026-11-15T13:18:56.184328+00:00",
+  "power": {
+    "sources": {
+      "power": {
+        "count": 14612,
+        "possibly_truncated": false,
+        "request_id": "f605aad665766203621b71f14236e466ede3e4e5f7c6df8f9fada5c30f0af3dc",
+        "status": "collected"
+      }
+    },
+    "summary": {
+      "coverage": 1.0,
+      "end": "2025-12-31",
+      "frost_days": 860,
+      "heat_days": 91,
+      "longest_dry_spell_days": 55,
+      "precipitation_mm": 4423.46,
+      "start": "2016-01-01"
+    },
+    "quality": {
+      "complete_years": 10,
+      "excluded_years": [],
+      "missing_by_variable": {
+        "PRECTOTCORR": 0,
+        "T2M_MAX": 0,
+        "T2M_MIN": 0
+      }
+    },
+    "started_at": "2026-11-15T13:18:53.332075+00:00",
+    "finished_at": "2026-11-15T13:18:56.184328+00:00"
+  },
+  "soilgrids": {
+    "source": "soilgrids",
+    "variable": "clay:0-5cm",
+    "value": 39.9,
+    "unit": "%"
+  },
+  "soilgrids_raster_sha256": "eb7e416990c785bf8b48bd509f4044fc9bc983589d5d2830ece6279650e134d6",
+  "source_probes": {
+    "checked_at": "2026-11-15T13:13:02.861442+00:00",
+    "probes": [
+      {
+        "source": "hls_s30",
+        "status": "reachable",
+        "http_status": 200,
+        "content_type": "application/json;charset=utf-8",
+        "sample_count": 1
+      },
+      {
+        "source": "hls_l30",
+        "status": "reachable",
+        "http_status": 200,
+        "content_type": "application/json;charset=utf-8",
+        "sample_count": 1
+      },
+      {
+        "source": "gpm",
+        "status": "reachable",
+        "http_status": 200,
+        "content_type": "application/json;charset=utf-8",
+        "sample_count": 1
+      },
+      {
+        "source": "nasadem",
+        "status": "reachable",
+        "http_status": 200,
+        "content_type": "application/json;charset=utf-8",
+        "sample_count": 1
+      },
+      {
+        "source": "srtm",
+        "status": "reachable",
+        "http_status": 200,
+        "content_type": "application/json;charset=utf-8",
+        "sample_count": 1
+      },
+      {
+        "source": "smap",
+        "status": "reachable",
+        "http_status": 200,
+        "content_type": "application/json;charset=utf-8",
+        "sample_count": 1
+      },
+      {
+        "source": "faostat_legacy",
+        "status": "unavailable",
+        "error": "TimeoutError: The read operation timed out"
+      },
+      {
+        "source": "faostat_current_without_token",
+        "status": "unavailable",
+        "error": "HTTPError: HTTP Error 401: Unauthorized"
+      },
+      {
+        "source": "soilgrids_wcs",
+        "status": "reachable",
+        "http_status": 200,
+        "content_type": "text/xml; charset=UTF-8",
+        "service_exception": false
+      }
+    ]
+  },
+  "notes": [
+    "POWER and SoilGrids values came from live external requests.",
+    "HLS and DEM processors were tested on controlled GeoTIFFs; protected satellite downloads were not tested without credentials.",
+    "No browser was available for visual screenshot inspection."
+  ],
+  "scope": "Historical Kherson verification, superseded; not Kharkiv data"
+}

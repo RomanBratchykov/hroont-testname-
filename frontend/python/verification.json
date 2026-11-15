@@ -1,0 +1,47 @@
+{
+  "region": "Kharkiv Oblast",
+  "region_code": "UA-63",
+  "latitude": 49.9935,
+  "longitude": 36.2304,
+  "boundary_source": "geoBoundaries gbOpen UKR ADM1, 9469f09, represented year 2017",
+  "checked_at": "2026-11-15T13:26:20.113262+00:00",
+  "tests": {
+    "passed": 36,
+    "skipped": 0
+  },
+  "power": {
+    "sources": {
+      "power": {
+        "count": 14612,
+        "possibly_truncated": false,
+        "request_id": "42a163cfe1006269b19ed965545aeda08c16a33cce1344d9ef4cc3f07bd4e407",
+        "status": "collected"
+      }
+    },
+    "summary": {
+      "coverage": 1.0,
+      "end": "2025-12-31",
+      "frost_days": 1413,
+      "heat_days": 35,
+      "longest_dry_spell_days": 43,
+      "precipitation_mm": 5931.35,
+      "start": "2016-01-01"
+    },
+    "quality": {
+      "complete_years": 10,
+      "excluded_years": [],
+      "missing_by_variable": {
+        "PRECTOTCORR": 0,
+        "T2M_MAX": 0,
+        "T2M_MIN": 0
+      }
+    },
+    "started_at": "2026-11-15T13:26:16.497610+00:00",
+    "finished_at": "2026-11-15T13:26:20.113262+00:00"
+  },
+  "notes": [
+    "Live POWER request for Kharkiv; no Kherson observations reused.",
+    "Soil/HLS/DEM processing algorithms tested on local controlled GeoTIFFs.",
+    "Prior live SoilGrids and source probes were for Kherson and are archived, not evidence of Kharkiv results."
+  ]
+}
