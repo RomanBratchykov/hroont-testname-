@@ -9,6 +9,7 @@ import { Sidebar } from './components/Sidebar';
 import { MascotSlot } from './components/MascotSlot';
 import type { MascotRenderer } from './components/MascotSlot';
 import { useChat } from './useChat';
+import { BoundaryPreview } from '../field-dashboard/BoundaryPreview';
 import { useAppearance } from '../settings/appearanceContext';
 import { SettingsPage } from '../settings/SettingsPage';
 import { PersonalStatePage } from '../personal-state/PersonalStatePage';
@@ -46,7 +47,7 @@ export function ChatPage({ mascot, openSettings, page, navigate }: {
       {page === 'dashboard' ? <DemoDashboard onAsk={question => { dispatch({ type: 'draft', text: question }); navigate('chat'); setShowIntroduction(false); }}/> : page === 'settings' ? <SettingsPage onBack={() => navigate('chat')} /> : page === 'personal-state' ? <PersonalStatePage onBack={() => navigate('chat')} /> : conversation ? <>
         <div className="conversation-heading">{renamingId === conversation.id ? <form key={conversation.id} onSubmit={e => { e.preventDefault(); const title = new FormData(e.currentTarget).get('title'); if (typeof title === 'string')
             dispatch({ type: 'rename', id: conversation.id, title }); setRenamingId(null); }}><input name="title" aria-label="Conversation title" defaultValue={conversation.title} autoFocus maxLength={100}/><button className="icon-button" aria-label="Save title"><Icon name="check"/></button></form> : <><h1>{conversation.title}</h1><button className="icon-button" aria-label="Rename conversation" onClick={() => setRenamingId(conversation.id)}><Icon name="pen" size={16}/></button></>}</div>
-        <div className="messages" role="log" aria-label="Conversation messages" aria-live="polite">{conversation.messages.map((message, index) => <div className={`message-row message-row-${message.role}`} key={message.id}><article className={`message message-${message.role}`}><div className="message-label">{message.role === "assistant" ? "Soily" : "You"}</div><ReplyText text={message.content} animate={message.role === "assistant" && message.id === revealingMessageId} onProgress={followReply} /><button className="copy-message icon-button" aria-label={copied === message.id ? 'Message copied' : 'Copy message'} onClick={async () => { try {
+        <div className="messages" role="log" aria-label="Conversation messages" aria-live="polite">{conversation.messages.map((message, index) => <div className={`message-row message-row-${message.role}`} key={message.id}><article className={`message message-${message.role}`}><div className="message-label">{message.role === "assistant" ? "Soily" : "You"}</div><BoundaryPreview text={message.content}/><ReplyText text={message.content} animate={message.role === "assistant" && message.id === revealingMessageId} onProgress={followReply} /><button className="copy-message icon-button" aria-label={copied === message.id ? 'Message copied' : 'Copy message'} onClick={async () => { try {
             await navigator.clipboard.writeText(message.content);
             setCopied(message.id);
         }

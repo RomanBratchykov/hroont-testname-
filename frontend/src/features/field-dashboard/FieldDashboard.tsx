@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { FieldMap } from './FieldMap';
+import { BoundaryInput } from './BoundaryPreview';
 import { ClimateChart } from './ClimateChart';
 import { PILOT, validLocation, type ClimateData, type DataSource, type Location, isClimateData, isSourceResponse } from './types';
 import './dashboard.css';
@@ -83,6 +84,7 @@ export function FieldDashboard({ onAsk }: { onAsk: (question: string) => void })
     const link = document.createElement('a'); link.href = url; link.download = 'croptato-field-climate.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return <div className="field-dashboard">
+    <BoundaryInput />
     <section className="field-panel" aria-labelledby="field-map-heading">
       <div className="field-panel-heading"><div><p className="page-eyebrow">01 / Locate</p><h2 id="field-map-heading">Start with your field</h2><p className="field-note">Choose a point to explore its climate. A point is not a verified field boundary.</p></div><button className="quiet-button" onClick={locate} disabled={locating}>{locating ? 'Locating…' : '⌖ Locate me'}</button></div>
       <FieldMap selected={selected} current={current} center={center} onCenter={setCenter} onSelect={select} />

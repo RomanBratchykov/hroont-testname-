@@ -409,47 +409,35 @@ def test_non_english_is_rejected_even_when_translation_is_configured(tmp_path):
         assert not any(event.get("stage") == "translating" for event in result)
 
 
-def test_spreadsheet_and_text_are_parsed_locally_with_units_and_formulas(tmp_path):
+@pytest.mark.parametrize("name,text", [
+    ("field.json", '{"type":"Polygon","coordinates":[[[32,46],[33,46],[33,47],[32,47],[32,46]]]}'),
+    ("field.txt", "Area (ha): 30"),
+    ("field.md", "# Field\nArea (ha): 30"),
+    ("field.csv", "area_ha\n30"),
+])
+def test_text_attachments_are_parsed_locally(tmp_path, name, text):
     import base64
-    import io
-
-    from openpyxl import Workbook
-
-    workbook = Workbook()
-    workbook.active.append(["Area (ha)", 30, "=B1*2"])
-    binary = io.BytesIO()
-    workbook.save(binary)
 
     def upstream(request):
         body = json.loads(request.content)
-        text = body["messages"][-1]["content"]
-        assert "Area (ha)\t30\t=B1*2" in text
-        assert "Untrusted attachment: field.xlsx" in text
-        assert "UEsDB" not in text
+        content = body["messages"][-1]["content"]
+        assert text in content
+        assert f"Untrusted attachment: {name}" in content
         return httpx.Response(200, json=ollama_reply())
 
-    with TestClient(
-        create_app(settings(tmp_path), transport=httpx.MockTransport(upstream))
-    ) as client:
-        result = events(
-            client.post(
-                "/api/chat",
-                json={
-                    "action": "send",
-                    "conversation_id": "a",
-                    "request_id": "r",
-                    "message": "Read my field",
-                    "files": [
-                        {
-                            "name": "field.xlsx",
-                            "data": base64.b64encode(binary.getvalue()).decode(),
-                        }
-                    ],
-                },
-            )
-        )
+    with TestClient(create_app(settings(tmp_path), transport=httpx.MockTransport(upstream))) as client:
+        result = events(client.post("/api/chat", json={
+            "conversation_id": "a", "request_id": "r", "message": "Read my field",
+            "files": [{"name": name, "data": base64.b64encode(text.encode()).decode()}],
+        }))
         assert result[-1]["type"] == "answer"
 
+
+@pytest.mark.parametrize("name", ["image.png", "report.pdf", "field.xlsx"])
+def test_binary_formats_explain_how_to_supply_text(tmp_path, name):
+    from backend.documents import Attachment
+    with pytest.raises(ValueError, match="paste it into the message"):
+        Attachment(name=name, data="AA==")
 
 def test_concurrency_cap_queue_fairness_and_cancelled_paid_reservation(tmp_path):
     from backend.orchestrator import Orchestrator

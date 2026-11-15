@@ -196,6 +196,12 @@ class Orchestrator:
     async def model_call(self, messages, schemas, thinking):
         config = self.config
         size = self.payload_bytes(messages, schemas)
+        if size > config.max_context_bytes:
+            log.warning(
+                "Model context overflow: payload_bytes=%d limit_bytes=%d messages=%d tool_results=%d",
+                size, config.max_context_bytes, len(messages),
+                sum(message["role"] == "tool" for message in messages),
+            )
         # Preserve the current request and its complete tool-call/result sequence.
         # Older conversational turns remain in durable history and can be paged back.
         current_user = max(
@@ -214,10 +220,30 @@ class Orchestrator:
             del messages[1:next_user]
             current_user -= next_user - 1
             size = self.payload_bytes(messages, schemas)
+        # Keep call IDs and reasoning intact: DeepSeek needs them for continuation.
+        # Full results remain in the turn's evidence; never truncate JSON into invalid data.
+        for message in sorted(
+            (m for m in messages if m["role"] == "tool"),
+            key=lambda m: len(m.get("content", "").encode()),
+            reverse=True,
+        ):
+            if size <= config.max_context_bytes:
+                break
+            replacement = json.dumps({
+                "status": "unavailable",
+                "context_omitted": True,
+                "reason": "Tool result omitted from model context to fit the request limit. "
+                "The full result is available in Tool findings. Do not infer its values; "
+                "explain the limitation and ask for a narrower request. Do not repeat this call.",
+            })
+            if len(replacement.encode()) < len(message.get("content", "").encode()):
+                message["content"] = replacement
+                size = self.payload_bytes(messages, schemas)
         if size > config.max_context_bytes:
             raise ProviderError(
                 "context_limit",
-                "Tool results exceed the context budget. Narrow the request.",
+                "The conversation and tool continuation exceed this app's context limit. "
+                "Start a new chat or request one analysis at a time; your input may be small.",
             )
         charge = None
         if config.paid_model:
@@ -408,10 +434,15 @@ class Orchestrator:
                     raise
                 messages.append(response.message)
                 if not response.calls:
+                    context_omitted = any(
+                        message["role"] == "tool"
+                        and '"context_omitted": true' in message.get("content", "")
+                        for message in messages
+                    )
                     event = {
                         "type": "answer",
                         "content": response.message["content"],
-                        "status": "partial" if response.truncated else "completed",
+                        "status": "partial" if response.truncated or context_omitted else "completed",
                         "conversation_id": chat,
                         "request_id": request,
                         "evidence": evidence,
@@ -421,6 +452,11 @@ class Orchestrator:
                     if response.truncated:
                         event["content"] += (
                             "\n\n[Output limit reached; this answer is incomplete.]"
+                        )
+                    if context_omitted:
+                        event["content"] += (
+                            "\n\n[Some tool results could not fit in model context. "
+                            "This answer is partial; full results are attached in Tool findings.]"
                         )
                     self.store.finish(request, event, "completed")
                     yield event
@@ -501,6 +537,18 @@ class Orchestrator:
             )
             raise
         except (ProviderError, BudgetExceeded, Conflict) as exc:
+            if isinstance(exc, ProviderError) and exc.code == "context_limit" and evidence:
+                event = {
+                    "type": "answer", "status": "partial",
+                    "conversation_id": chat, "request_id": request,
+                    "content": exc.message + " Available results are attached in Tool findings. "
+                    "No final scientific conclusion was produced.",
+                    "evidence": evidence,
+                }
+                self.store.finish(request, event, "completed")
+                yield event
+                return
+
             event = {
                 "type": "error",
                 "code": getattr(

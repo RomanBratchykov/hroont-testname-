@@ -1,3 +1,5 @@
+import { validateFiles } from './attachments.ts';
+
 export interface ChatEvent {
     type: 'status' | 'answer' | 'error';
     stage?: string;
@@ -12,7 +14,9 @@ export async function* readEvents(response: Response): AsyncGenerator<ChatEvent>
     if (!response.ok) {
         const body: unknown = await response.json().catch(() => null);
         const detail = body && typeof body === 'object' && 'detail' in body ? body.detail : null;
-        throw new Error(typeof detail === 'string' ? detail : `Request failed (${response.status}).`);
+        const validation = Array.isArray(detail) ? detail.flatMap((item: unknown) =>
+            item && typeof item === 'object' && 'msg' in item && typeof item.msg === 'string' ? [item.msg] : []).join(' ') : '';
+        throw new Error(typeof detail === 'string' ? detail : validation || `Request failed (${response.status}).`);
     }
     if (!response.body) throw new Error('Response has no readable stream.');
     const reader = response.body.getReader();
@@ -61,9 +65,7 @@ export async function command(body: Record<string, unknown>, signal?: AbortSigna
 
 export interface Upload { name: string; data: string }
 export async function encodeFiles(files: File[]): Promise<Upload[]> {
-    if (files.length > 3 || files.some(file => file.size > 10 * 1024 * 1024)) {
-        throw new Error('Attach up to three files, maximum 10 MB each.');
-    }
+    validateFiles(files);
     return Promise.all(files.map(file => new Promise<Upload>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve({ name: file.name, data: String(reader.result).split(',')[1] });

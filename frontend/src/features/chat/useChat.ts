@@ -96,12 +96,14 @@ export function useChat() {
         setStatus({ type: 'status', stage: 'preparing', message: 'Reading input…' });
         try {
             const encoded = await encodeFiles(files);
+            const displayText = text + (await Promise.all(files.map(async file =>
+                `\n\n[Untrusted attachment: ${file.name}]\n${await file.text()}\n[End attachment]`))).join('');
             if (abort.signal.aborted) return;
             const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'send', conversation_id: chat, request_id: request, message: text,
                     mode: model === 'reasoning' ? 'thinking' : model === 'fast' ? 'fast' : 'auto', files: encoded }), signal: abort.signal });
             if (abort.signal.aborted) return;
-            if (response.ok) apply({ type: 'send', text: text || files.map(file => file.name).join(', '), id: chat, messageId: request, now: Date.now() });
+            if (response.ok) apply({ type: 'send', text: displayText, id: chat, messageId: request, now: Date.now() });
             for await (const event of readEvents(response)) {
                 if (abort.signal.aborted) break;
                 if (event.type === 'status') setStatus(event);

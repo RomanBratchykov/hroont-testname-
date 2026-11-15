@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import { project, unproject, type Location } from './types';
 
-export function FieldMap({ selected, current, center, onCenter, onSelect }: {
+export function FieldMap({ selected, current, center, onCenter, onSelect, boundary = [], initialZoom = 11 }: {
   selected: Location; current: Location | null; center: Location;
+  boundary?: Location[]; initialZoom?: number;
   onCenter: (point: Location) => void; onSelect: (point: Location) => void;
 }) {
-  const [zoom, setZoom] = useState(11);
+  const [zoom, setZoom] = useState(initialZoom);
   const [tileError, setTileError] = useState(false);
   const pointer = useRef<{ x: number; y: number } | null>(null);
   const origin = project(center, zoom);
@@ -37,6 +38,7 @@ export function FieldMap({ selected, current, center, onCenter, onSelect }: {
         pointer.current = null;
       }}>
       <rect width="800" height="420" fill="#dce5d4" />{tiles}
+      {boundary.length === 4 && <polygon points={boundary.map(point => { const p = project(point, zoom); return `${p.x - left},${p.y - top}`; }).join(' ')} fill="#5c8538" fillOpacity="0.28" stroke="#315734" strokeWidth="3"><title>Farmer-provided field boundary, unverified</title></polygon>}
       {current && marker(current, '#2774ec', 'Your browser location')}
       {marker(selected, '#c45c23', 'Selected field point — boundary not verified')}
     </svg>

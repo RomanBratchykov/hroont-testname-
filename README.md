@@ -143,10 +143,26 @@ A provider may still bill a request already sent. Chats expire after 30 days of 
 
 ## Files, translation and future scripts
 
-Attach `.md`, `.txt`, `.json` or `.xlsx`. Files are parsed locally into text; no binary uploads
-are sent to DeepSeek. Limits: 10 MB/file, three files, 15 MB combined encoded request,
-24 KB combined extracted text. Unsupported, oversized and macro-containing files are rejected.
-Excel formulas are preserved as text, not evaluated. Text is supplied directly, not indexed as RAG.
+Attach `.md`, `.txt`, `.json`, `.geojson`, `.csv` or `.tsv` through the picker, drag-and-drop,
+or clipboard file paste. Text must be UTF-8 and JSON must be valid. Images, PDFs, spreadsheets
+and other formats are rejected with instructions to paste relevant text or export a supported
+text format. No binary uploads are sent to DeepSeek. Limits: 10 MB/file, three files,
+15 MB combined encoded request, 24 KB combined extracted text. Text is supplied directly,
+not indexed as RAG.
+
+To display a field, open the dashboard's **Show a field boundary** form and paste four
+`[longitude, latitude]` pairs in boundary order, or a GeoJSON Polygon. A repeated closing
+coordinate is accepted. Valid polygon JSON in chat or an attached text file also displays
+an inline map. The map fits the boundary automatically; crossing edges, duplicate corners,
+out-of-range coordinates and zero-area shapes are rejected. Boundaries are farmer-provided
+and unverified, and do not change the separately selected climate query point.
+
+The app limits the entire serialized model request to 32 KB by default, including policy,
+tool schemas, history, reasoning continuation and tool results. A small user message can
+therefore still trigger the limit. Older turns are removed first; oversized tool results
+are replaced in model context with an explicit omission notice, while full results remain
+in **Tool findings**. If the continuation still cannot fit, the app returns a partial result
+with the available findings. Context overflow logs record byte counts, not private content.
 
 English works immediately. Non-English input requires a configured LibreTranslate-compatible `TRANSLATION_URL`;
 otherwise the app asks for English without sending detected non-English text to the model. Language detection is local and heuristic; short ambiguous Latin text is treated as English. Short translations

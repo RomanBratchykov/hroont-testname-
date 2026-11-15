@@ -19,6 +19,9 @@ test('NDJSON stream preserves split UTF-8 and reports incomplete streams', async
 
 test('API errors and malformed events do not appear as assistant success', async () => {
     await assert.rejects(async () => {
+        for await (const event of readEvents(new Response(JSON.stringify({ detail: [{ msg: 'Unsupported format; paste the relevant text.' }] }), { status: 422 }))) void event;
+    }, /paste the relevant text/);
+    await assert.rejects(async () => {
         for await (const event of readEvents(new Response('{"detail":"Already processing"}', {status: 409}))) void event;
     }, /Already processing/);
     await assert.rejects(async () => {

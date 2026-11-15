@@ -7,6 +7,7 @@
 .field-button { background: var(--text); color: var(--bg); border-radius: 9px; padding: 11px 17px; font-size: 12px; font-weight: 600; }
 .field-button.secondary { background: var(--surface); color: var(--text); border: 1px solid var(--outline); }
 .field-button:disabled { opacity: .55; }
+.field-panel textarea { display: block; box-sizing: border-box; width: 100%; margin: 10px 0; padding: 12px; border: 1px solid var(--outline); border-radius: 7px; background: var(--surface); color: var(--text); resize: vertical; }
 .field-map { position: relative; overflow: hidden; border-radius: 12px; border: 1px solid var(--outline); background: #dce5d4; }
 .field-map > svg { display: block; width: 100%; height: auto; touch-action: none; cursor: crosshair; user-select: none; }
 .map-toolbar { position: absolute; top: 12px; right: 12px; display: grid; box-shadow: 0 2px 15px #0002; border-radius: 8px; overflow: hidden; }
