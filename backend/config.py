@@ -25,7 +25,8 @@ class Settings(BaseModel):
     output_rate: Decimal | None = Field(default=None, gt=0)
     max_model_calls: int = Field(default=6, ge=1, le=6)
     max_tool_calls: int = Field(default=10, ge=1, le=10)
-    concurrency: int = Field(default=4, ge=1, le=4)
+    max_active_users: int = Field(default=50, ge=1, le=10000)
+    concurrency: int = Field(default=4, ge=1, le=64)
     max_context_bytes: int = Field(default=32000, ge=8000, le=128000)
     ollama_context_tokens: int = Field(default=16384, ge=1024, le=131072)
     max_output_tokens: int = Field(default=1024, ge=64, le=4096)
@@ -149,6 +150,8 @@ class Settings(BaseModel):
             ("DEEPSEEK_INPUT_USD_PER_MILLION", "input_rate"),
             ("DEEPSEEK_OUTPUT_USD_PER_MILLION", "output_rate"),
             ("MODEL_TIMEOUT_SECONDS", "request_timeout"),
+            ("MAX_ACTIVE_USERS", "max_active_users"),
+            ("MODEL_CONCURRENCY", "concurrency"),
             ("OLLAMA_CONTEXT_TOKENS", "ollama_context_tokens"),
             ("MODEL_MAX_OUTPUT_TOKENS", "max_output_tokens"),
             ("MODEL_MAX_REASONING_TOKENS", "max_reasoning_tokens"),

@@ -441,7 +441,8 @@ def test_binary_formats_explain_how_to_supply_text(tmp_path, name):
     with pytest.raises(ValueError, match="paste it into the message"):
         Attachment(name=name, data="AA==")
 
-def test_concurrency_cap_queue_fairness_and_cancelled_paid_reservation(tmp_path):
+@pytest.mark.parametrize("parallelism", [4, 8])
+def test_concurrency_cap_queue_fairness_and_cancelled_paid_reservation(tmp_path, parallelism):
     from backend.orchestrator import Orchestrator
     from backend.providers import Provider
     from backend.store import Store
@@ -471,6 +472,7 @@ def test_concurrency_cap_queue_fairness_and_cancelled_paid_reservation(tmp_path)
         config = settings(
             tmp_path,
             provider="deepseek",
+            concurrency=parallelism,
             api_key="key",
             input_rate=Decimal(1),
             output_rate=Decimal(2),
@@ -486,25 +488,25 @@ def test_concurrency_cap_queue_fairness_and_cancelled_paid_reservation(tmp_path)
                 store.begin(key, key, key, "fast", [])
                 return [event async for event in engine.run(key, key, key, "fast", [])]
 
-            tasks = [asyncio.create_task(turn(index)) for index in range(6)]
+            tasks = [asyncio.create_task(turn(index)) for index in range(parallelism + 2)]
             for _ in range(100):
                 await asyncio.sleep(0.005)
-                if len(entered) == 4:
+                if len(entered) == parallelism:
                     break
-            assert entered == ["0", "1", "2", "3"]
-            assert engine.active == 4
+            assert entered == [str(index) for index in range(parallelism)]
+            assert engine.active == parallelism
             tasks[0].cancel()
             with pytest.raises(asyncio.CancelledError):
                 await tasks[0]
             for _ in range(100):
                 await asyncio.sleep(0.005)
-                if len(entered) == 5:
+                if len(entered) == parallelism + 1:
                     break
-            assert entered[-1] == "4"
+            assert entered[-1] == str(parallelism)
             assert store.budget("testing")["reserved_usd"] > 0
             release.set()
             await asyncio.gather(*tasks[1:])
-            assert entered[-1] == "5"
+            assert entered[-1] == str(parallelism + 1)
             assert engine.active == 0
             remaining = store.budget("testing")["reserved_usd"]
             assert remaining > 0
@@ -704,7 +706,7 @@ def test_guest_workspaces_are_private_and_clear_only_own_history(tmp_path):
 
 @pytest.mark.parametrize("provider,expected", [("deepseek", 429), ("ollama", 200)])
 def test_guest_capacity_is_provider_specific(tmp_path, provider, expected):
-    app = create_app(settings(tmp_path, provider=provider))
+    app = create_app(settings(tmp_path, provider=provider, max_active_users=4))
     with TestClient(app) as client:
         for _ in range(4):
             client.cookies.clear()
@@ -714,7 +716,7 @@ def test_guest_capacity_is_provider_specific(tmp_path, provider, expected):
 
 
 def test_guest_session_survives_reload_and_inactive_slot_can_be_reused(tmp_path):
-    config = settings(tmp_path, provider="deepseek")
+    config = settings(tmp_path, provider="deepseek", max_active_users=4)
     app = create_app(config)
     with TestClient(app) as client:
         assert client.post("/api/chat", json={"action": "list"}).status_code == 200

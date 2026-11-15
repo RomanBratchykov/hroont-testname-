@@ -103,7 +103,7 @@ class Store:
             }
             if limit is not None and identifier not in active and len(active) >= limit:
                 raise SessionCapacity(
-                    "I’m helping four users right now. Please try again when a slot becomes available."
+                    f"The app has reached its {limit}-user capacity. Please try again when a slot becomes available."
                 )
             db.execute(
                 "INSERT INTO guest_sessions VALUES (?,?) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen",

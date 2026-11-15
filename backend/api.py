@@ -148,7 +148,9 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
                 guest_token = secrets.token_urlsafe(32)
             owner = hashlib.sha256(guest_token.encode()).hexdigest()
             try:
-                store.admit_guest(owner, 4 if config.provider == "deepseek" else None)
+                store.admit_guest(
+                    owner, config.max_active_users if config.provider == "deepseek" else None
+                )
             except SessionCapacity as exc:
                 return JSONResponse(
                     {"detail": str(exc)}, status_code=429, headers={"Retry-After": "60"}
@@ -177,7 +179,7 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
             "provider": config.provider,
             "model": config.model_name,
             "workspace": "private-guest",
-            "max_active_users": 4 if config.provider == "deepseek" else None,
+            "max_active_users": config.max_active_users if config.provider == "deepseek" else None,
             "active": app.state.engine.active,
             "capacity": config.concurrency,
             "phase": config.phase,

@@ -119,8 +119,14 @@ There is no automatic provider fallback.
 Guest access is the default: each browser gets a private server-side workspace, identified by
 an HttpOnly cookie retained for 30 days. Browsers sharing cookies share a workspace; use different
 browser profiles or devices for separate users. Clearing cookies loses access to that guest history.
-DeepSeek accepts at most four active guests; a slot expires after 30 minutes without a chat API request,
-unless a model request is still running. Ollama has no guest limit. Both use up to four concurrent model calls.
+DeepSeek accepts up to 50 active guests by default. Set `MAX_ACTIVE_USERS` (1–10000) to change
+this limit. A slot expires after 30 minutes without a chat API request, unless a model request
+is still running. Ollama has no guest limit. Both providers process four model requests at a
+time by default; other turns wait in the queue. Set `MODEL_CONCURRENCY` (1–64) to change that
+per-process limit. For example, `MAX_ACTIVE_USERS=100` and `MODEL_CONCURRENCY=8` admit 100
+active guests while processing eight turns at once. Restart the backend after changing these
+settings. `/api/health` reports both limits. These settings do not establish tested throughput;
+actual capacity depends on the server and provider. Spending limits remain unchanged.
 Chat ownership is checked on the server, including history clearing and model tool access.
 Existing chats without an owner remain stored but are not exposed to new guests.
 Frontend-only history stays in browser storage and is separate from server history.
@@ -187,7 +193,7 @@ Translation status appears beside the mascot; Settings can hide that notice.
 Scientific scripts/datasets, embeddings, validated Personal state extraction and charts will be added later.
 The available tools include saved profile read/write, chat history, capability checks and climate/source retrieval. Register future approved tools in
 `backend/tools.py`; the model cannot create scripts or execute shell commands. The loop allows at most
-six model calls and ten tool executions, with four active turns and one active turn per chat.
+six model calls and ten tool executions, with configurable parallel turns and one active turn per chat.
 The app must explain missing evidence rather than invent scientific results.
 
 ## Checks
