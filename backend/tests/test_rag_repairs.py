@@ -242,7 +242,7 @@ def test_health_and_capabilities_do_not_claim_scientific_readiness(
     result = build_tools(
         Store(tmp_path / "health.sqlite"), Settings(rag_url="http://localhost:8000")
     )("a")["get_capabilities"].invoke({})
-    assert result["scientific_analysis"] == "unavailable"
+    assert result["scientific_analysis"] == "partial"
     assert result["retrieval"]["status"] == "partial"
 
 

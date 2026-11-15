@@ -223,8 +223,26 @@ otherwise the app asks for English without sending detected non-English text to 
 have a one-second timeout; larger inputs have 30 seconds. This is a limit, not a measured speed guarantee.
 Translation status appears beside the mascot; Settings can hide that notice.
 
-Scientific scripts/datasets, embeddings, validated Personal state extraction and charts will be added later.
-The available tools include saved profile read/write, chat history, capability checks and climate/source retrieval. Register future approved tools in
+The chat now exposes deterministic calculation tools in addition to profile, history and data retrieval:
+
+| Tool | Connected calculation | Required inputs and boundaries |
+| --- | --- | --- |
+| `calculate_gross_margin` | Revenue and gross margin per ha; total for known area | Yield t/ha, price per tonne, variable cost per ha, currency and year. Saved fields override explicitly selected configured assumptions. No net-profit or yield forecast claim. |
+| `calculate_crop_score` | Specification section 8 prototype weighted score | Four sourced component scores and passed climate, soil, irrigation, calendar and rotation gates. Missing/failed gates return no score; weights are not calibrated predictions. |
+| `validate_rotation` | Return/group-rule checks and cyclic closure | Exact harvest years, documented crop/group return rules and other sourced feasibility checks. No universal sunflower interval is hardcoded. |
+| `calculate_rusle` | Supplied-cell-factor RUSLE-style estimate, integrated by area | Co-located documented R/K/LS/C/P, compatible SI units, period and cell areas. Missing factors return no soil-loss figure. Not official RUSLE2 or automatic factor derivation. |
+
+For example, the configured chickpea inputs (1.6 t/ha, 18,000 UAH/t, 16,000 UAH/ha variable
+cost) give a conditional gross margin of 12,800 UAH/ha, or 384,000 UAH for a reported 30 ha.
+These are assumption-based calculations, not predicted farm profit. To edit financial inputs
+in Personal state, use `<crop>_yield_t_ha`, `<crop>_price_per_t`, `<crop>_variable_cost_per_ha`,
+`currency` and `price_year`. Example crop key: `chickpea` or `winter_wheat`.
+
+Both `/api/health` and `get_capabilities` list these calculators; `scientific_analysis=partial`
+distinguishes them from a complete regionally validated analysis pipeline. Tool findings retain
+the numeric results, units, method, sources and missing-input reasons. Existing saved example
+cards remain a separate snapshot. Automatic component/factor derivation, regional calibration
+and yield forecasts still require implementation and suitable evidence. Register future approved tools in
 `backend/tools.py`; the model cannot create scripts or execute shell commands. The loop allows at most
 six model calls and ten tool executions, with configurable parallel turns and one active turn per chat.
 The app must explain missing evidence rather than invent scientific results.

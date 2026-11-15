@@ -6,7 +6,13 @@ Source checks now have four-request concurrency, bounded retries, safe failure r
 separate GPM metadata/download checks. `NASA_TOKEN` supports a NASA Open APIs access check;
 Earthdata authentication remains separate. Qdrant API-key support was added to runtime and
 ingestion, and embedding imports are deferred so SQL/client checks can run independently.
-Reference-store provisioning/indexing and the scientific calculation stages remain required.
+Reference-store provisioning/indexing and scientific input derivation remain required.
+
+Subsequent calculation-tool connection: gross margin, sourced-component prototype scoring,
+documented cyclic rotation checks and supplied-spatial-factor RUSLE arithmetic are now exposed
+to chat and capability reporting. These return explicit missing inputs; automatic climate/soil
+score derivation, calibrated forecasting and acquisition/derivation of all RUSLE factors remain
+outside those arithmetic calculators. The historical findings below describe the pre-connection state.
 
 ## Scope
 

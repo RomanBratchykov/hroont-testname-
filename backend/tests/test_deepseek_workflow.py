@@ -60,11 +60,11 @@ def test_deepseek_existing_showcase_history_tools_and_budget(tmp_path, mode):
                 history["messages"][0]["content"]
                 == "Explain John’s saved example dashboard."
             )
-            assert capabilities["scientific_analysis"] == "unavailable"
-            assert capabilities["scientific_tools"] == []
+            assert capabilities["scientific_analysis"] == "partial"
+            assert "calculate_gross_margin" in capabilities["scientific_tools"]
             message = {
                 "role": "assistant",
-                "content": "John’s dashboard is synthetic. Scientific calculations are not connected.",
+                "content": "John’s configured inputs can be used by the connected gross-margin calculator; other estimates need sourced inputs.",
             }
         return httpx.Response(
             200,

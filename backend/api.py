@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from backend.calculations import SCIENTIFIC_TOOLS
 from backend.config import ROOT, Settings
 from backend.documents import Attachment, extract
 from backend.field_data import check_sources, climate
@@ -190,8 +191,8 @@ def create_app(config: Settings | None = None, transport=None) -> FastAPI:
             "configured": config.provider == "ollama"
             or (not config.paid_model)
             or bool(config.api_key and config.input_rate and config.output_rate),
-            "scientific_tools": [],
-            "scientific_analysis": "unavailable",
+            "scientific_tools": SCIENTIFIC_TOOLS,
+            "scientific_analysis": "partial",
             "climate_retrieval": "available",
             "data_tools": ["get_climate_history", "check_data_sources"],
             "retrieval": retrieval,

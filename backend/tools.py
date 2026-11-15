@@ -10,6 +10,17 @@ import httpx
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.calculations import (
+    SCIENTIFIC_TOOLS,
+    CropScoreArgs,
+    GrossMarginArgs,
+    RotationArgs,
+    RusleArgs,
+    crop_score,
+    gross_margin,
+    rusle,
+    validate_rotation,
+)
 from backend.config import Settings
 from backend.field_data import check_sources, climate
 from backend.profile import ProfileUpdate
@@ -243,6 +254,20 @@ def build_tools(
     rag_enabled = bool(config and config.rag_url)
 
     def for_chat(chat: str):
+        def calculate_gross_margin(**kwargs) -> dict:
+            owner = store.chat_owner(chat)
+            profile = store.profile(owner) if owner else {"facts": {}}
+            return gross_margin(GrossMarginArgs.model_validate(kwargs), profile)
+
+        def calculate_crop_score(**kwargs) -> dict:
+            return crop_score(CropScoreArgs.model_validate(kwargs))
+
+        def calculate_rusle(**kwargs) -> dict:
+            return rusle(RusleArgs.model_validate(kwargs))
+
+        def check_rotation(**kwargs) -> dict:
+            return validate_rotation(RotationArgs.model_validate(kwargs))
+
         def clear_user_info() -> dict:
             owner = store.chat_owner(chat)
             if owner is None:
@@ -299,7 +324,7 @@ def build_tools(
             state = rag_health(config.rag_url if config else "")
             return {
                 "status": "available",
-                "scientific_analysis": "unavailable",
+                "scientific_analysis": "partial",
                 "retrieval": state,
                 "datasets": ["NASA POWER Daily 2016–2025"]
                 if data_http is not None
@@ -310,13 +335,29 @@ def build_tools(
                     "place_name_geocoding": "unavailable; ask for a map pin or coordinates",
                     "source_status": "Check each requested location; global access is not regional agronomic validation.",
                 },
-                "scientific_tools": [],
-                "reason": "Reference and historical climate retrieval do not establish agronomic feasibility; scientific calculations are not connected.",
+                "scientific_tools": SCIENTIFIC_TOOLS,
+                "reason": "Deterministic gross-margin, sourced-component screening, documented rotation checks and supplied-factor RUSLE calculators are connected. Each reports missing inputs; automatic factor derivation, regional calibration and yield forecasting are not implemented.",
                 "available": ["farmer interview", "conversation history", "save_user_info", "read_user_info"],
-                "recommendations": "deferred",
+                "recommendations": "conditional_screening_only",
             }
 
         tool_list = [
+            StructuredTool.from_function(
+                calculate_gross_margin, name="calculate_gross_margin", args_schema=GrossMarginArgs,
+                description="Calculate crop revenue and gross margin from yield t/ha, price per tonne and variable cost per ha. Reads saved numeric facts named <crop>_yield_t_ha, <crop>_price_per_t, <crop>_variable_cost_per_ha, currency, price_year, field_area. Set use_configured_assumptions=true only for the configured scenario; it loads exact known economic inputs. Optional explicit values override saved/scenario values. Returns per-ha and known-area totals, sources, units and limitations. Never invent missing values; not a yield forecast or net profit.",
+            ),
+            StructuredTool.from_function(
+                calculate_crop_score, name="calculate_crop_score", args_schema=CropScoreArgs,
+                description="Compute the project's prototype 0-100 comparative screening score: .35 temperature + .35 water_climate + .20 soil + .10 rotation. Requires sourced, method-documented component scores and passed climate/soil/irrigation/calendar/rotation hard constraints. Missing or failed inputs produce no score. Do not invent scores or constraints from intuition, raw rainfall or soil labels; not a probability or validated recommendation.",
+            ),
+            StructuredTool.from_function(
+                check_rotation, name="validate_rotation", args_schema=RotationArgs,
+                description="Check exact prior harvest years and planned crop sequence against supplied sourced return/group rules, including cyclic last-year-to-first-year continuity. No universal sunflower interval is assumed. Full feasibility also needs sourced climate, soil, irrigation and calendar constraints. Returns violations and missing checks; do not invent regional rules.",
+            ),
+            StructuredTool.from_function(
+                calculate_rusle, name="calculate_rusle", args_schema=RusleArgs,
+                description="Calculate conditional long-term sheet/rill erosion from co-located spatial cells with supplied documented R, K, LS, C and P and areas. Required SI units: R MJ mm/(ha h yr), K t ha h/(ha MJ mm), LS/C/P 1. Sums cell losses by area; missing factors or incompatible units return no estimate. Never infer R from annual rainfall, C from NDVI/residue or K from a soil label. Not official RUSLE2; no factor-download/derivation or yield forecast implied.",
+            ),
             StructuredTool.from_function(
                 clear_user_info, name="clear_user_info", args_schema=NoArgs,
                 description="Permanently clear ALL current profile facts and the field boundary for this visitor. Use only when the user explicitly asks to clear their profile or all farm information. Does not delete chat history. Only confirm clearing when status is cleared.",

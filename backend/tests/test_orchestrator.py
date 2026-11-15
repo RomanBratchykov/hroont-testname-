@@ -117,6 +117,10 @@ def test_tools_are_bounded_and_unknown_tools_never_execute(tmp_path):
         body = json.loads(request.content)
         if count == 1:
             assert {t["function"]["name"] for t in body["tools"]} == {
+                "calculate_gross_margin",
+                "calculate_crop_score",
+                "validate_rotation",
+                "calculate_rusle",
                 "save_user_info",
                 "clear_user_info",
                 "read_user_info",
@@ -165,7 +169,7 @@ def test_tools_are_bounded_and_unknown_tools_never_execute(tmp_path):
         assert result[-1]["type"] == "answer"
         assert result[-1]["status"] == "partial"
         assert (
-            result[-1]["evidence"][-1]["result"]["scientific_analysis"] == "unavailable"
+            result[-1]["evidence"][-1]["result"]["scientific_analysis"] == "partial"
         )
         assert count == 2
 

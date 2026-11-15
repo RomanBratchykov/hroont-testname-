@@ -213,7 +213,7 @@ def test_model_capabilities_expose_global_retrieval_without_claiming_agronomic_a
             assert (
                 result["climate_retrieval"]["region"] == "Global coordinates, 85°S–85°N"
             )
-            assert result["scientific_analysis"] == "unavailable"
+            assert result["scientific_analysis"] == "partial"
             assert "check_data_sources" in tools
 
     asyncio.run(check())
